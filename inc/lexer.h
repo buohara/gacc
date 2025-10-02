@@ -1,0 +1,96 @@
+#pragma once
+
+#include "common.h"
+#include <map>
+#include <string>
+#include <vector>
+
+using namespace std;
+
+enum TokenType 
+{
+    TOKEN_EOF = 0,
+    TOKEN_UNKNOWN,
+    TOKEN_IDENTIFIER,
+    TOKEN_INT_LITERAL,
+    TOKEN_FLOAT_LITERAL,
+    TOKEN_STRING_LITERAL,
+    TOKEN_CHAR_LITERAL,
+    TOKEN_BOOL_LITERAL,
+    TOKEN_KW_FN,
+    TOKEN_KW_LET,
+    TOKEN_KW_CONST,
+    TOKEN_KW_TYPE,
+    TOKEN_KW_IF,
+    TOKEN_KW_ELSE,
+    TOKEN_KW_FOR,
+    TOKEN_KW_WHILE,
+    TOKEN_KW_RETURN,
+    TOKEN_KW_IMPORT,
+    TOKEN_KW_EXPORT,
+    TOKEN_KW_EXTERN,
+    TOKEN_KW_MV,
+    TOKEN_KW_CGAVEC,
+    TOKEN_KW_GRADE,
+    TOKEN_KW_STRUCT,
+    TOKEN_KW_MATCH,
+    TOKEN_KW_USING,
+    TOKEN_KW_INLINE,
+    TOKEN_KW_BREAK,
+    TOKEN_KW_CONTINUE,
+    TOKEN_LPAREN,
+    TOKEN_RPAREN,
+    TOKEN_LBRACE,
+    TOKEN_RBRACE,
+    TOKEN_LBRACK,
+    TOKEN_RBRACK,
+    TOKEN_COMMA,
+    TOKEN_SEMICOLON,
+    TOKEN_COLON,
+    TOKEN_DOT,
+    TOKEN_ARROW,
+    TOKEN_AT,
+    TOKEN_HASH,
+    TOKEN_OP_PLUS,
+    TOKEN_OP_MINUS,
+    TOKEN_OP_STAR,
+    TOKEN_OP_SLASH,
+    TOKEN_OP_PERCENT,
+    TOKEN_OP_ASSIGN,
+    TOKEN_OP_PLUS_EQ,
+    TOKEN_OP_MINUS_EQ,
+    TOKEN_OP_STAR_EQ,
+    TOKEN_OP_SLASH_EQ,
+    TOKEN_OP_EQ,
+    TOKEN_OP_NE,
+    TOKEN_OP_LT,
+    TOKEN_OP_GT,
+    TOKEN_OP_LE,
+    TOKEN_OP_GE,
+    TOKEN_OP_AND,
+    TOKEN_OP_OR,
+    TOKEN_OP_NOT,
+    TOKEN_OP_BIT_AND,
+    TOKEN_OP_BIT_OR,
+    TOKEN_OP_BIT_XOR,
+    TOKEN_OP_SHL,
+    TOKEN_OP_SHR,
+    TOKEN_OP_GEO,
+    TOKEN_OP_WEDGE,
+    TOKEN_OP_INNER,
+    TOKEN_OP_LCONTRACT,
+    TOKEN_OP_RCONTRACT,
+    TOKEN_OP_REVERSE,
+    TOKEN_BLADE,
+    TOKEN_COMMENT,
+};
+
+struct Token 
+{
+    TokenType type;
+    string text;
+    uint32_t line;
+    uint32_t column;
+};
+
+void GetTokens(const string &file, vector<Token> &tokens);

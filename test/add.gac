@@ -1,0 +1,24 @@
+void TestCGAAdd()
+{
+    const int N = 1000;
+
+    cgavec vecsA[N];
+    cgavec vecsB[N];
+    cgavec vecsC[N];
+
+    for (int i = 0; i < N; i++)
+    {
+        vecsA[i] = cgarand();
+        vecsB[i] = cgarand();
+
+        vecsC[i] = vecsA[i] + vecsB[i];
+
+        printf("Sum i = %mv\n", vecsC[i]);
+    }
+}
+
+int main()
+{
+    TestCGAAdd();
+    return 0;
+}

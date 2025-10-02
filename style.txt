@@ -1,0 +1,25 @@
+Comments:
+
+- No inline comments.
+- Function documentation: only in for function bodies in cpp files using javadoc style comments.
+
+Casing:
+
+- Structs, classes: PascalCase.
+- Functions, variables: camelCase.
+
+Braces:
+
+- Opening braces on newlines for structs, classes, if/else blocks, for blocks, while blocks.
+
+Namespaces:
+
+- Use "using namespace <myNamespace>;" to avoid long type namespace qualifiers.
+
+Others:
+
+- Do not use autos.
+- No not use cout, use printf.
+- Do not use C++ fstreams.
+- Pass by reference. No raw pointers.
+- When consecutive lines perform assignments, align "=" characters.
