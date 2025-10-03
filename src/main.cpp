@@ -6,6 +6,10 @@ struct CLArgs
 {
     string inputFilename;
     string outputFilename;
+    bool printTokens;
+    bool printAST;
+
+    CLArgs() : printTokens(false), printAST(false) {}
 };
 
 /**
@@ -40,6 +44,18 @@ void ParseCommandLine(vector<string> &args, CLArgs &clArgs)
             continue;
         }
 
+        if (args[i] == "-tok")
+        {
+            clArgs.printTokens = true;
+            continue;
+        }
+
+        if (args[i] == "-ast")
+        {
+            clArgs.printAST = true;
+            continue;
+        }
+
         clArgs.inputFilename = args[i];
     }
 }
@@ -62,7 +78,15 @@ int main(int argc, char **argv)
 
     GAParser parser;
     GetTokens(clArgs.inputFilename, parser.tokens);
-    parser.PrintTokens();
+    parser.GenerateAST();
+
+    if (clArgs.printTokens)
+        parser.PrintTokens();
+
+    if (clArgs.printAST)
+        parser.PrintAST();
+
+    parser.PrintSymbolTable();
 
     return 0;
 }

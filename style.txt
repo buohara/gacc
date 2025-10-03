@@ -23,3 +23,4 @@ Others:
 - Do not use C++ fstreams.
 - Pass by reference. No raw pointers.
 - When consecutive lines perform assignments, align "=" characters.
+- No lambdas.
