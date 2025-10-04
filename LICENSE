@@ -1,0 +1,53 @@
+POLYFORM NONCOMMERCIAL LICENSE 1.0.0
+
+Copyright (c) 2025 Ben O'Hara
+
+This PolyForm Noncommercial License 1.0.0 (the "License") governs use of the accompanying software (the "Software").
+
+1. DEFINITIONS
+
+"Commercial Purposes" means any use of the Software by a person or entity for financial gain, whether direct or indirect, including without limitation sale, licensing, sublicensing, distribution for a fee, use in a commercial product or service, inclusion in a product or service that generates revenue, or use by an entity that is primarily engaged in commercial activities.
+
+"Noncommercial" means any use that is not a Commercial Purpose.
+
+2. LICENSE GRANT
+
+Subject to the terms and conditions of this License, the Licensor hereby grants you a non-exclusive, non-transferable, revocable license to use, reproduce, and modify the Software solely for Noncommercial Purposes.
+
+3. RESTRICTIONS
+
+You may not, and you may not permit third parties to, use the Software for any Commercial Purposes. Distribution, sale, sublicensing, or other commercial exploitation of the Software is expressly prohibited.
+
+4. OWNERSHIP
+
+All title, ownership rights, and intellectual property rights in and to the Software remain with the Licensor. This License does not grant you any rights to the Licensor's trademarks, service marks, or trade names.
+
+5. CONTRIBUTIONS
+
+Any contributions you make to the Software are assumed to be under the same License unless otherwise agreed in writing. Contributors grant the Licensor and downstream users the right to use contributions under the terms of this License.
+
+6. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+7. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+8. TERMINATION
+
+This License is effective until terminated. Your rights under this License will terminate automatically without notice if you fail to comply with any term(s) of this License. Upon termination you must cease all use of the Software and destroy all copies.
+
+9. GOVERNING LAW
+
+This License shall be governed by and construed in accordance with the laws of the jurisdiction of the Licensor, without regard to conflict of law principles.
+
+10. MISCELLANEOUS
+
+If any provision of this License is held to be unenforceable, that provision shall be limited or eliminated to the minimum extent necessary so that the remaining provisions shall otherwise remain in full force and effect.
+
+For clarity, nothing in this License prevents you from using the Software for personal, academic, or evaluation purposes so long as such use is not for Commercial Purposes.
+
+----
+
+To apply this license, replace "<copyright owner>" above with your name or organization and commit this file to the repository.

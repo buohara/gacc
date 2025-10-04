@@ -1,6 +1,7 @@
 #include "common.h"
 #include "lexer.h"
 #include "parser.h"
+#include "gadialect.h"
 
 struct CLArgs 
 {
@@ -61,6 +62,25 @@ void ParseCommandLine(vector<string> &args, CLArgs &clArgs)
 }
 
 /**
+ * InitMLIRContext - Initialize the MLIR context with necessary dialects.
+ * 
+ * @param context   [in/out]    MLIR context to initialize.
+ */
+
+void InitMLIRContext(MLIRContext &context)
+{
+    DialectRegistry registry;
+
+    registry.insert<ga::GADialect>();
+    registry.insert<mlir::memref::MemRefDialect>();
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::arith::ArithDialect>();
+    registry.insert<mlir::cf::ControlFlowDialect>();
+
+    context.appendDialectRegistry(registry);
+}
+
+/**
  * main - Compiler entry.
  * 
  * @param argc  [in] Argument count.
@@ -75,6 +95,9 @@ int main(int argc, char **argv)
     CLArgs clArgs;
 
     ParseCommandLine(args, clArgs);
+
+    MLIRContext context;
+    InitMLIRContext(context);
 
     GAParser parser;
     GetTokens(clArgs.inputFilename, parser.tokens);

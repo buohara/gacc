@@ -4,27 +4,27 @@ using namespace std;
 
 map<string, TokenType> tokenMap =
 {
-	{"fn", TOKEN_KW_FN},
-	{"let", TOKEN_KW_LET},
-	{"const", TOKEN_KW_CONST},
-	{"type", TOKEN_KW_TYPE},
-	{"if", TOKEN_KW_IF},
-	{"else", TOKEN_KW_ELSE},
-	{"for", TOKEN_KW_FOR},
-	{"while", TOKEN_KW_WHILE},
-	{"return", TOKEN_KW_RETURN},
-	{"import", TOKEN_KW_IMPORT},
-	{"export", TOKEN_KW_EXPORT},
-	{"extern", TOKEN_KW_EXTERN},
-	{"mv", TOKEN_KW_MV},
-	{"cgavec", TOKEN_KW_CGAVEC},
-	{"grade", TOKEN_KW_GRADE},
-	{"struct", TOKEN_KW_STRUCT},
-	{"match", TOKEN_KW_MATCH},
-	{"using", TOKEN_KW_USING},
-	{"inline", TOKEN_KW_INLINE},
-	{"break", TOKEN_KW_BREAK},
-	{"continue", TOKEN_KW_CONTINUE},
+	{"fn",      TOKEN_KW_FN},
+	{"let",     TOKEN_KW_LET},
+	{"const",   TOKEN_KW_CONST},
+	{"type",    TOKEN_KW_TYPE},
+	{"if",      TOKEN_KW_IF},
+	{"else",    TOKEN_KW_ELSE},
+	{"for",     TOKEN_KW_FOR},
+	{"while",   TOKEN_KW_WHILE},
+	{"return",  TOKEN_KW_RETURN},
+	{"import",  TOKEN_KW_IMPORT},
+	{"export",  TOKEN_KW_EXPORT},
+	{"extern",  TOKEN_KW_EXTERN},
+	{"mv",      TOKEN_KW_MV},
+	{"cgavec",  TOKEN_KW_CGAVEC},
+	{"grade",   TOKEN_KW_GRADE},
+	{"struct",  TOKEN_KW_STRUCT},
+	{"match",   TOKEN_KW_MATCH},
+	{"using",   TOKEN_KW_USING},
+	{"inline",  TOKEN_KW_INLINE},
+	{"break",   TOKEN_KW_BREAK},
+	{"continue",TOKEN_KW_CONTINUE},
 };
 
 /**
@@ -47,9 +47,7 @@ void GetTokens(const string &file, vector<Token> &tokens)
     f = fopen(file.c_str(), "rb");
 
     if (f == NULL)
-    {
         return;
-    }
 
     if (fseek(f, 0, SEEK_END) != 0)
     {
@@ -126,7 +124,10 @@ void GetTokens(const string &file, vector<Token> &tokens)
                 char nc;
                 nc = buffer[i];
 
-                if ((nc >= 'A' && nc <= 'Z') || (nc >= 'a' && nc <= 'z') || (nc >= '0' && nc <= '9') || nc == '_')
+                if ((nc >= 'A' && nc <= 'Z') || 
+                    (nc >= 'a' && nc <= 'z') || 
+                    (nc >= '0' && nc <= '9') || 
+                    nc == '_')
                 {
                     i = i + 1;
                     continue;
@@ -198,7 +199,9 @@ void GetTokens(const string &file, vector<Token> &tokens)
                     if (j < size && buffer[j] >= '0' && buffer[j] <= '9')
                     {
                         i = i + 1;
-                        while (i < size && ((buffer[i] >= '0' && buffer[i] <= '9') || buffer[i] == '+' || buffer[i] == '-'))
+                        while (i < size && 
+                               ((buffer[i] >= '0' && buffer[i] <= '9') || 
+                                 buffer[i] == '+' || buffer[i] == '-'))
                         {
                             i = i + 1;
                         }
@@ -221,13 +224,9 @@ void GetTokens(const string &file, vector<Token> &tokens)
             tok.text    = lex;
 
             if (isFloat)
-            {
                 tok.type = TOKEN_FLOAT_LITERAL;
-            }
             else
-            {
                 tok.type = TOKEN_INT_LITERAL;
-            }
             
             tokens.push_back(tok);
             column = column + (int)len;
@@ -237,8 +236,10 @@ void GetTokens(const string &file, vector<Token> &tokens)
         if (c == '"')
         {
             int64_t start;
-            start = i;
-            i = i + 1;
+            
+            start   = i;
+            i       = i + 1;
+            
             while (i < size)
             {
                 char nc;
@@ -288,18 +289,12 @@ void GetTokens(const string &file, vector<Token> &tokens)
             i = i + 1;
 
             if (i < size && buffer[i] == '\\' && i + 1 < size)
-            {
                 i = i + 2;
-            }
             else if (i < size)
-            {
                 i = i + 1;
-            }
 
             if (i < size && buffer[i] == '\'')
-            {
                 i = i + 1;
-            }
             
             int64_t len;
             len = i - start;
@@ -327,9 +322,7 @@ void GetTokens(const string &file, vector<Token> &tokens)
                 i       = i + 2;
                 
                 while (i < size && buffer[i] != '\n')
-                {
                     i = i + 1;
-                }
 
                 int64_t len;
                 len = i - start;

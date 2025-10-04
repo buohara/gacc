@@ -1,28 +1,18 @@
 #pragma once
 
-// #include "llvm/Support/CommandLine.h"
-// #include "llvm/Support/InitLLVM.h"
-// #include "llvm/Support/TargetSelect.h"
-// #include "llvm/Support/Error.h"
-// #include "llvm/IR/LLVMContext.h"
-// #include "llvm/IR/Module.h"
-// #include "llvm/ExecutionEngine/ExecutionEngine.h"
-// #include "llvm/ExecutionEngine/Orc/LLJIT.h"
-// #include "llvm/Target/TargetMachine.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
 
-// #include "mlir/IR/MLIRContext.h"
-// #include "mlir/IR/Dialect.h"
-// #include "mlir/IR/Builders.h"
-// #include "mlir/IR/Types.h"
-// #include "mlir/IR/Value.h"
-// #include "mlir/IR/BuiltinOps.h"
-// #include "mlir/IR/BuiltinTypes.h"
-// #include "mlir/Support/LogicalResult.h"
-// #include "mlir/Pass/Pass.h"
-// #include "mlir/Transforms/DialectConversion.h"
-// #include "mlir/Target/LLVMIR/Export.h"
-// #include "mlir/InitAllDialects.h"
-// #include "mlir/InitAllPasses.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Builders.h"
+
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 
 #include <stdlib.h>
 #include <stdio.h>

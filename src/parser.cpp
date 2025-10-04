@@ -144,20 +144,44 @@ void GAParser::PrintAST()
 void GAParser::PrintSymbolTable()
 {
     printf("Symbol Table:\n");
+    
     for (const auto &entry : symbolTable)
     {
-        const string &name = entry.first;
-        Types type = entry.second;
+        const string &name  = entry.first;
+        Types type          = entry.second;
         const char *typeStr = "UNKNOWN";
 
         switch (type)
         {
-            case TYPE_INT: typeStr = "INT"; break;
-            case TYPE_FLOAT32: typeStr = "FLOAT32"; break;
-            case TYPE_FLOAT64: typeStr = "FLOAT64"; break;
-            case TYPE_VOID: typeStr = "VOID"; break;
-            case TYPE_CGAVEC: typeStr = "CGAVEC"; break;
-            default: typeStr = "UNKNOWN"; break;
+            case TYPE_INT: 
+                
+                typeStr = "INT"; 
+                break;
+
+            case TYPE_FLOAT32: 
+
+                typeStr = "FLOAT32"; 
+                break;
+
+            case TYPE_FLOAT64: 
+
+                typeStr = "FLOAT64"; 
+                break;
+
+            case TYPE_VOID: 
+
+                typeStr = "VOID"; 
+                break;
+
+            case TYPE_CGAVEC: 
+
+                typeStr = "CGAVEC"; 
+                break;
+
+            default: 
+
+                typeStr = "UNKNOWN"; 
+                break;
         }
 
         printf("  %s : %s\n", name.c_str(), typeStr);
