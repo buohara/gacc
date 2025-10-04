@@ -72,10 +72,10 @@ void InitMLIRContext(MLIRContext &context)
     DialectRegistry registry;
 
     registry.insert<ga::GADialect>();
-    registry.insert<mlir::memref::MemRefDialect>();
-    registry.insert<mlir::func::FuncDialect>();
-    registry.insert<mlir::arith::ArithDialect>();
-    registry.insert<mlir::cf::ControlFlowDialect>();
+    registry.insert<memref::MemRefDialect>();
+    registry.insert<func::FuncDialect>();
+    registry.insert<arith::ArithDialect>();
+    registry.insert<cf::ControlFlowDialect>();
 
     context.appendDialectRegistry(registry);
 }

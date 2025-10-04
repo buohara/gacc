@@ -48,5 +48,4 @@ $(TARGET): $(SRCS)
 
 clean:
 	-rm -f $(TARGET) *.o
-	-rm -rf $(GEN_INC_DIR)
 
