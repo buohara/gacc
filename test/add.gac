@@ -10,7 +10,6 @@ void TestCGAAdd()
     {
         vecsA[i] = cgarand();
         vecsB[i] = cgarand();
-
         vecsC[i] = vecsA[i] + vecsB[i];
 
         printf("Sum i = %mv\n", vecsC[i]);

@@ -32,6 +32,35 @@ enum Types
     TYPE_UNKNOWN
 };
 
+enum SymbolKind
+{
+    SYM_VAR,
+    SYM_PARAM,
+    SYM_FUNC,
+    SYM_GLOBAL
+};
+
+struct Symbol 
+{
+    string name;
+    SymbolKind kind;
+    Types type            = TYPE_UNKNOWN;
+    Types declaredType    = TYPE_UNKNOWN;
+    uint32_t astNodeIdx   = 0;
+    uint32_t scopeLevel   = 0;
+    uint32_t declLine     = 0;
+    uint32_t declCol      = 0;
+    int32_t paramCount    = 0;
+
+    vector<Types> paramTypes;
+
+    bool isAddressable    = false;
+    bool isConst          = false;
+    bool declaredOnly     = false;
+
+    string loweredType;
+};
+
 struct ASTNode
 {
     NodeType type;
@@ -43,6 +72,10 @@ struct ASTNode
 
     vector<ASTNode> children;
 
+    int32_t symbolId = -1;
+    Types declaredType = TYPE_UNKNOWN;
+    Types inferredType = TYPE_UNKNOWN;
+
     ASTNode() : type(NODE_PROG), line(0), column(0), tokenType(TOKEN_UNKNOWN) {}
     ASTNode(NodeType t, uint32_t l, uint32_t c) : type(t), line(l), column(c), tokenType(TOKEN_UNKNOWN) {}
 };
@@ -50,10 +83,9 @@ struct ASTNode
 struct GAParser
 {
     vector<Token> tokens;
-    vector<pair<string, Types>> symbolTable;
+    vector<Symbol> symbolTable;
 
     size_t current;
-
     ASTNode root;
 
     GAParser() : current(0) {}
@@ -63,6 +95,9 @@ struct GAParser
     void PrintSymbolTable();
 
     void GenerateAST();
+    void BuildSymbolTable();
+    void ResolveNames();
+    ASTNode &GetNodeByPath(const std::vector<int> &path);
 
     void ParseFuncDecl(ASTNode &parent);
     void ParseVarDecl(ASTNode &parent);

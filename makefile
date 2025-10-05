@@ -1,6 +1,7 @@
 LLVM_CONFIG 	?= /usr/local/bin/llvm-config
 CXX 			?= clang++
-CXXFLAGS 		?= -g -O2 -std=c++17 -fPIC
+#CXXFLAGS 		?= -g -O2 -std=c++17 -fPIC
+CXXFLAGS += -g -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fno-inline -fvar-tracking-assignments -DDEBUG
 
 LLVM_CXXFLAGS 	:= $(shell $(LLVM_CONFIG) --cxxflags 2>/dev/null)
 LLVM_LDFLAGS  	:= $(shell $(LLVM_CONFIG) --ldflags 2>/dev/null)
@@ -41,6 +42,7 @@ $(GEN_INC_DIR):
 	mkdir -p $(GEN_INC_DIR)
 
 $(TARGET): $(SRCS)
+#$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(INCLUDES) -o $@ $^ $(LD_FLAGS)
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(INCLUDES) -o $@ $^ $(LD_FLAGS) $(MLIR_LIBS) $(ALL_LIB_FILES) -Wl,-rpath,$(MLIR_LIBDIR)
 
 %.o: %.cpp

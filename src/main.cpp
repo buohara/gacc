@@ -3,6 +3,9 @@
 #include "parser.h"
 #include "gadialect.h"
 
+using namespace llvm;
+using namespace mlir;
+
 struct CLArgs 
 {
     string inputFilename;
@@ -100,8 +103,11 @@ int main(int argc, char **argv)
     InitMLIRContext(context);
 
     GAParser parser;
+
     GetTokens(clArgs.inputFilename, parser.tokens);
     parser.GenerateAST();
+    parser.BuildSymbolTable();
+    parser.ResolveNames();
 
     if (clArgs.printTokens)
         parser.PrintTokens();
