@@ -1,4 +1,18 @@
 #include "parser.h"
+#include <functional>
+
+using namespace mlir;
+using namespace mlir::scf;
+using namespace mlir::func;
+using namespace mlir::memref;
+using namespace mlir::arith;
+
+/**
+ * IsTypeToken - Check if a token represents a type and output the type.
+ * 
+ * @param t         [in]    Token to check.
+ * @param outType   [out]   Output type if token is a type.
+ */
 
 static bool IsTypeToken(const Token &t, Types &outType)
 {
@@ -186,6 +200,10 @@ void GAParser::ResolveNames()
 
 /**
  * GAParser::GetNodeByPath - Get a reference to an AST node by its path.
+ * 
+ * @param path  [in]    Vector of child indices to traverse the AST.
+ * 
+ * @return Reference to the AST node at the specified path, or the closest valid node if the path is invalid.
  */
 
 ASTNode &GAParser::GetNodeByPath(const vector<int> &path)
@@ -205,6 +223,11 @@ ASTNode &GAParser::GetNodeByPath(const vector<int> &path)
 
 /**
  * GAParser::PushDiag - Push a Diag message.
+ * 
+ * @param line      [in]    Line number of the diagnostic.
+ * @param column    [in]    Column number of the diagnostic.
+ * @param msg       [in]    Diagnostic message.
+ * @param isError   [in]    True if this is an error, false if
  */
 
 void GAParser::PushDiag(uint32_t line, uint32_t column, const string &msg, bool isError)
@@ -670,6 +693,7 @@ void GAParser::ParseVarDecl(ASTNode &parent)
         if (current < tokens.size())
         {
             Token idx = tokens[current];
+
             if (idx.type == TOKEN_INT_LITERAL || idx.type == TOKEN_IDENTIFIER)
             {
                 ASTNode lit(NODE_LIT, idx.line, idx.column);
@@ -1251,7 +1275,8 @@ void GAParser::BuildSymbolTable()
                                 if (ss.arraySize > 0)
                                     p.arraySize = ss.arraySize;
                                 else
-                                    PushDiag(c.line, c.column, string("array-size identifier '") + pc0.text + " is not a compile-time size", true);
+                                    PushDiag(c.line, c.column, string("array-size identifier '") + \
+                                    pc0.text + " is not a compile-time size", true);
                                 break;
                             }
                         }
@@ -1327,14 +1352,16 @@ void GAParser::BuildSymbolTable()
                                     if (ss.arraySize > 0)
                                         s.arraySize = ss.arraySize;
                                     else
-                                        PushDiag(node.line, node.column, string("array-size identifier '") + lc0.text + " is not a compile-time size", true);
+                                        PushDiag(node.line, node.column, string("array-size identifier '") + \
+                                        lc0.text + " is not a compile-time size", true);
                                     break;
                                 }
                             }
 
                             if (!foundSym)
                             {
-                                PushDiag(node.line, node.column, string("array-size identifier '") + lc0.text + " not found", true);
+                                PushDiag(node.line, node.column, string("array-size identifier '") + lc0.text + \
+                                " not found", true);
                             }
                         }
                     }
@@ -1568,9 +1595,10 @@ void GAParser::InferTypes()
                         if (sym.paramCount >= 0 && sym.paramCount != 0 && sym.paramCount != provided)
                         {
                             PushDiag(node.line, node.column,
-                                           string("call to '") + sym.name + "' expected " +
-                                           to_string(sym.paramCount) + " args but got " + to_string(provided),
-                                           true);
+                                string("call to '") + sym.name + "' expected " +
+                                to_string(sym.paramCount) + " args but got " + to_string(provided),
+                                true
+                            );
                         }
                     }
                     break;
@@ -1598,7 +1626,7 @@ void GAParser::InferTypes()
                     bool hasInit = false;
                     Types init = TYPE_UNKNOWN;
 
-                    auto isNumericLiteralString = [&](const string &s) -> bool
+                    std::function<bool(const string &)> isNumericLiteralString = [&](const string &s) -> bool
                     {
                         if (s.empty())
                             return false;
@@ -1657,10 +1685,11 @@ void GAParser::InferTypes()
                             if (!(IsNumeric(init) && IsNumeric(node.declaredType)) && init != node.declaredType)
                             {
                                 PushDiag(node.line, node.column,
-                                               string("initializer type '") + TypeToString(init) +
-                                               "' does not match declared type '" + TypeToString(node.declaredType) + "' for '" +
-                                               node.text + "'",
-                                               true);
+                                    string("initializer type '") + TypeToString(init) +
+                                    "' does not match declared type '" + TypeToString(node.declaredType) + "' for '" +
+                                    node.text + "'",
+                                    true
+                                );
                             }
 
                             for (Symbol &s : symbolTable)
@@ -1765,9 +1794,10 @@ void GAParser::InferTypes()
                                         if (!(IsNumeric(rt) && IsNumeric(s.declaredType)) && rt != s.declaredType)
                                         {
                                             PushDiag(node.line, node.column, string("return type '") +
-                                                           TypeToString(rt) + "' does not match function declared type '" +
-                                                           TypeToString(s.declaredType) + "'",
-                                                           true);
+                                                TypeToString(rt) + "' does not match function declared type '" +
+                                                TypeToString(s.declaredType) + "'",
+                                                true
+                                            );
                                         }
                                     }
 
@@ -1858,28 +1888,347 @@ void GAParser::ComputeLoweredTypes()
 
 void GAParser::LowerToMLIR(MLIRContext &ctx)
 {
-    using namespace mlir;
-
     OpBuilder builder(&ctx);
     ModuleOp module = ModuleOp::create(builder.getUnknownLoc());
 
     for (const Symbol &s : symbolTable)
     {
-        if (s.kind == SYM_FUNC)
+        if (s.kind != SYM_FUNC)
+            continue;
+
+        SmallVector<Type, 4> inputs;
+        SmallVector<Type, 1> results;
+
+        for (Types pt : s.paramTypes)
         {
-            SmallVector<Type, 4> inputs;
-            SmallVector<Type, 1> results;
+            Type et;
 
-            auto funcType   = FunctionType::get(&ctx, inputs, results);
-            auto func       = mlir::func::FuncOp::create(builder.getUnknownLoc(), s.name, funcType);
+            switch (pt)
+            {
+                case TYPE_INT: 
+                    
+                    et = builder.getIntegerType(32);
+                    break;
 
-            func.setPrivate();
+                case TYPE_FLOAT32: 
+                
+                    et = builder.getF32Type(); 
+                    break;
+
+                case TYPE_FLOAT64: 
+
+                    et = builder.getF64Type(); 
+                    break;
+
+                case TYPE_CGAVEC:         
+                {
+                    SmallVector<int64_t, 1> shape;
+                    shape.push_back(32);
+                    et = MemRefType::get(shape, builder.getF32Type());
+                }
+
+                break;
+
+                default: 
+
+                    et = builder.getF32Type(); 
+                    break;
+            }
+
+            inputs.push_back(et);
+        }
+
+        if (s.type != TYPE_UNKNOWN && s.type != TYPE_VOID)
+        {
+            Type et;
+
+            switch (s.type)
+            {
+                case TYPE_INT:
+                
+                    et = builder.getIntegerType(32);
+                    break;
+                    
+                case TYPE_FLOAT32:
+
+                    et = builder.getF32Type(); 
+                    break;
+
+                case TYPE_FLOAT64:
+
+                    et = builder.getF64Type(); 
+                    break;
+
+                case TYPE_CGAVEC: 
+                {
+                    SmallVector<int64_t, 1> shape;
+                    shape.push_back(32);
+                    et = MemRefType::get(shape, builder.getF32Type());
+                }
+
+                break;
+                
+                default: 
+
+                    et = builder.getF32Type(); 
+                    break;
+            }
+
+            results.push_back(et);
+        }
+
+        FunctionType funcType   = FunctionType::get(&ctx, inputs, results);
+        func::FuncOp func       = func::FuncOp::create(builder.getUnknownLoc(), s.name, funcType);
+
+        vector<int> foundPath;
+        vector<vector<int>> search;
+        search.push_back(vector<int>());
+
+        while (!search.empty())
+        {
+            vector<int> path = std::move(search.back());
+            search.pop_back();
+
+            ASTNode &n = GetNodeByPath(path);
+
+            if ((uint32_t)n.nodeId == s.astNodeIdx)
+            {
+                foundPath = path;
+                break;
+            }
+
+            for (int i = (int)n.children.size() - 1; i >= 0; --i)
+            {
+                vector<int> childPath = path;
+                childPath.push_back(i);
+                search.push_back(std::move(childPath));
+            }
+        }
+
+        vector<uint32_t> ids;
+        
+        if (foundPath.empty())
+        {
             module.push_back(func);
+            continue;
         }
-        else if (s.kind == SYM_GLOBAL)
-        {
 
+        func.addEntryBlock();
+        OpBuilder fbuilder(&ctx);
+        fbuilder.setInsertionPointToStart(&func.getBody().front());
+
+        if (!foundPath.empty())
+        {
+            vector<vector<int>> collectStack;
+            collectStack.push_back(foundPath);
+
+            while (!collectStack.empty())
+            {
+                vector<int> p = std::move(collectStack.back());
+                collectStack.pop_back();
+
+                ASTNode &cn = GetNodeByPath(p);
+                ids.push_back(cn.nodeId);
+
+                for (int i = (int)cn.children.size() - 1; i >= 0; --i)
+                {
+                    vector<int> cp = p;
+                    cp.push_back(i);
+                    collectStack.push_back(std::move(cp));
+                }
+            }
         }
+
+        for (const Symbol &sym : symbolTable)
+        {
+            if (sym.astNodeIdx == 0)
+                continue;
+
+            if (!ids.empty() && find(ids.begin(), ids.end(), sym.astNodeIdx) == ids.end())
+                continue;
+
+            if (sym.kind == SYM_VAR || sym.kind == SYM_PARAM)
+            {
+                bool shouldAlloc = (sym.arraySize > 0) || (sym.type == TYPE_CGAVEC);
+
+                if (!shouldAlloc)
+                    continue;
+
+                Type elemType;
+
+                switch (sym.type)
+                {
+                    case TYPE_INT:
+                        
+                        elemType = builder.getIntegerType(32);
+                        break;
+
+                    case TYPE_FLOAT32: 
+                    
+                        elemType = builder.getF32Type();
+                        break;
+                    
+                    case TYPE_FLOAT64: 
+
+                        elemType = builder.getF64Type();
+                        break;
+
+                    case TYPE_CGAVEC: 
+
+                        elemType = builder.getF32Type();
+                        break;
+
+                    default: 
+
+                        elemType = builder.getF32Type();
+                        break;
+                }
+
+                SmallVector<int64_t, 4> shape;
+
+                if (sym.type == TYPE_CGAVEC)
+                {
+                    if (sym.arraySize > 0)
+                        shape.push_back((int64_t)sym.arraySize);
+
+                    shape.push_back(32);
+                }
+                else
+                {
+                    if (sym.arraySize > 0)
+                        shape.push_back((int64_t)sym.arraySize);
+                }
+
+                if (!shape.empty())
+                {
+                    mlir::MemRefType mrType = MemRefType::get(shape, elemType);
+                    fbuilder.create<memref::AllocOp>(fbuilder.getUnknownLoc(), mrType);
+                }
+            }
+        }
+
+        for (uint32_t nid : ids)
+        {
+            vector<vector<int>> searchPaths;
+            searchPaths.push_back(foundPath);
+
+            while (!searchPaths.empty())
+            {
+                vector<int> p = std::move(searchPaths.back());
+                searchPaths.pop_back();
+
+                ASTNode &cn = GetNodeByPath(p);
+                
+                if (cn.nodeId == nid && cn.type == NODE_FOR)
+                {
+                        llvm::outs() << "[debug] encountered NODE_FOR id=" << cn.nodeId << "\n";
+                    if (cn.children.size() >= 4)
+                    {
+                        ASTNode &init = cn.children[0];
+                        ASTNode &cond = cn.children[1];
+                        ASTNode &incr = cn.children[2];
+                        ASTNode &body = cn.children[3];
+
+                        int64_t ub = -1;
+
+                        if (!cond.children.empty())
+                        {
+                            ASTNode &rhs = cond.children.back();
+
+                            if (rhs.type == NODE_LIT)
+                            {
+                                ub = strtoll(rhs.text.c_str(), nullptr, 10);
+                            }
+                            else if (rhs.type == NODE_EXPR && !rhs.text.empty())
+                            {
+                                for (const Symbol &ss : symbolTable)
+                                {
+                                    if (ss.name == rhs.text && ss.arraySize > 0)
+                                    {
+                                        ub = (int64_t)ss.arraySize;
+                                        break;
+                                    }
+                                }
+
+                                if (ub <= 0)
+                                {
+                                    for (const Symbol &ss : symbolTable)
+                                    {
+                                        if (ss.name != rhs.text)
+                                            continue;
+
+                                        if (ss.astNodeIdx == 0)
+                                            continue;
+
+                                        vector<vector<int>> pfsearch;
+                                        pfsearch.push_back(foundPath);
+
+                                        while (!pfsearch.empty())
+                                        {
+                                            vector<int> p = std::move(pfsearch.back());
+                                            pfsearch.pop_back();
+
+                                            ASTNode &maybe = GetNodeByPath(p);
+
+                                            if ((uint32_t)maybe.nodeId == ss.astNodeIdx)
+                                            {
+                                                if (!maybe.children.empty())
+                                                {
+                                                    ASTNode &init = maybe.children.back();
+                                                    if (init.type == NODE_LIT)
+                                                    {
+                                                        ub = strtoll(init.text.c_str(), nullptr, 10);
+                                                    }
+                                                }
+
+                                                break;
+                                            }
+
+                                            for (int j = (int)maybe.children.size() - 1; j >= 0; --j)
+                                            {
+                                                vector<int> cp = p;
+                                                cp.push_back(j);
+                                                pfsearch.push_back(std::move(cp));
+                                            }
+                                        }
+
+                                        if (ub > 0)
+                                            break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (ub <= 0)
+                            continue;
+
+                        arith::ConstantIndexOp lbOp     = fbuilder.create<arith::ConstantIndexOp>(fbuilder.getUnknownLoc(), 0);
+                        arith::ConstantIndexOp ubOp     = fbuilder.create<arith::ConstantIndexOp>(fbuilder.getUnknownLoc(), ub);
+                        arith::ConstantIndexOp stepOp   = fbuilder.create<arith::ConstantIndexOp>(fbuilder.getUnknownLoc(), 1);
+
+                        SmallVector<Value, 4> iterArgs;
+                        scf::ForOp forOp = fbuilder.create<scf::ForOp>(fbuilder.getUnknownLoc(), lbOp.getResult(), ubOp.getResult(), stepOp.getResult(), iterArgs);
+
+                        Block &loopBody = forOp.getOperation()->getRegion(0).front();
+                        OpBuilder lbuilder(&ctx);
+                        lbuilder.setInsertionPointToStart(&loopBody);
+
+                        lbuilder.create<func::CallOp>(fbuilder.getUnknownLoc(), "cgarand", TypeRange(), ValueRange());
+                        lbuilder.create<scf::YieldOp>(fbuilder.getUnknownLoc());
+                    }
+                }
+
+                for (int i = (int)cn.children.size() - 1; i >= 0; --i)
+                {
+                    vector<int> cp = p;
+                    cp.push_back(i);
+                    searchPaths.push_back(std::move(cp));
+                }
+            }
+        }
+
+        fbuilder.create<func::ReturnOp>(fbuilder.getUnknownLoc());
+        module.push_back(func);
     }
 
     module.print(llvm::outs());
