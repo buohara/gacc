@@ -57,6 +57,8 @@ struct Symbol
     bool isAddressable    = false;
     bool isConst          = false;
     bool declaredOnly     = false;
+    // For array declarations, 0 means unknown/dynamic, otherwise static size.
+    uint32_t arraySize    = 0;
 
     string loweredType;
 };
@@ -66,24 +68,34 @@ struct ASTNode
     NodeType type;
     uint32_t line;
     uint32_t column;
+    uint32_t nodeId = 0;
 
     string text;
     TokenType tokenType;
 
     vector<ASTNode> children;
 
-    int32_t symbolId = -1;
-    Types declaredType = TYPE_UNKNOWN;
-    Types inferredType = TYPE_UNKNOWN;
+    int32_t symbolId    = -1;
+    Types declaredType  = TYPE_UNKNOWN;
+    Types inferredType  = TYPE_UNKNOWN;
 
     ASTNode() : type(NODE_PROG), line(0), column(0), tokenType(TOKEN_UNKNOWN) {}
     ASTNode(NodeType t, uint32_t l, uint32_t c) : type(t), line(l), column(c), tokenType(TOKEN_UNKNOWN) {}
 };
 
+struct Diagnostic
+    {
+        uint32_t line;
+        uint32_t column;
+        string message;
+        bool isError;
+    };
+
 struct GAParser
 {
     vector<Token> tokens;
     vector<Symbol> symbolTable;
+    vector<Diagnostic> diagnostics;
 
     size_t current;
     ASTNode root;
@@ -107,4 +119,8 @@ struct GAParser
     void ParseForLoop(ASTNode &parent);
     void ParseParams(ASTNode &parent);
     void ParseCallExpr(ASTNode &parent);
+    void InferTypes();
+    void PushDiagnostic(uint32_t line, uint32_t column, const string &msg, bool isError=true);
+    void PrintDiagnostics();
+    bool HasErrors();
 };

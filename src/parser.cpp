@@ -9,10 +9,10 @@ static bool IsTypeToken(const Token &t, Types &outType)
         if (t.text == "float64") { outType = TYPE_FLOAT64; return true; }
         if (t.text == "void") { outType = TYPE_VOID; return true; }
         if (t.text == "cgavec") { outType = TYPE_CGAVEC; return true; }
+
         return false;
     }
 
-    // some type names are tokenized as keywords
     if (t.type == TOKEN_KW_CGAVEC)
     {
         outType = TYPE_CGAVEC;
@@ -48,11 +48,7 @@ void GAParser::ResolveNames()
             scopeStack[0][symbolTable[i].name] = (int)i;
     }
 
-    struct PFrame 
-    { 
-        vector<int> path;
-        bool entered; 
-    };
+    struct PFrame { vector<int> path; bool entered; };
 
     vector<PFrame> pstk;
     pstk.push_back(PFrame());
@@ -136,7 +132,7 @@ void GAParser::ResolveNames()
                     if (resolved >= 0)
                         n.symbolId = resolved;
                     else
-                        printf("Semantic error: unresolved identifier '%s' at %u:%u\n", n.text.c_str(), n.line, n.column);
+                        PushDiagnostic(n.line, n.column, string("unresolved identifier '") + n.text + "'", true);
                 }
             }
 
@@ -181,6 +177,45 @@ ASTNode &GAParser::GetNodeByPath(const vector<int> &path)
     }
 
     return *cur;
+}
+
+/**
+ * GAParser::PushDiagnostic - Push a diagnostic message.
+ */
+
+void GAParser::PushDiagnostic(uint32_t line, uint32_t column, const string &msg, bool isError)
+{
+    Diagnostic d;
+
+    d.line      = line;
+    d.column    = column;
+    d.message   = msg;
+    d.isError   = isError;
+    diagnostics.push_back(std::move(d));
+}
+
+/**
+ * GAParser::PrintDiagnostics - Print all diagnostics.
+ */
+
+void GAParser::PrintDiagnostics()
+{
+    for (const Diagnostic &d : diagnostics)
+    {
+        printf("%s at %u:%u: %s\n", d.isError ? "error" : "warning", d.line, d.column, d.message.c_str());
+    }
+}
+
+/**
+ * GAParser::HasErrors - Check if there are any error diagnostics.
+ */
+
+bool GAParser::HasErrors()
+{
+    for (const Diagnostic &d : diagnostics)
+        if (d.isError) return true;
+
+    return false;
 }
 
 /**
@@ -232,7 +267,6 @@ void GAParser::PrintAST()
                 break;
             
             case NODE_VAR_DECL:
-                
                 label = "VAR"; 
                 break;
             
@@ -454,14 +488,16 @@ void GAParser::ParseFuncDecl(ASTNode &parent)
 {
     if (current >= tokens.size())
         return;
-    // Support optional leading return-type token (identifier or keyword),
-    // e.g.: "void Foo(...)" or "int Foo(...)".
+
     Types retType = TYPE_UNKNOWN;
     bool hasRetType = false;
+
     if (current + 2 < tokens.size())
     {
         Types tmp;
-        if (IsTypeToken(tokens[current], tmp) && tokens[current + 1].type == TOKEN_IDENTIFIER && tokens[current + 2].type == TOKEN_LPAREN)
+
+        if (IsTypeToken(tokens[current], tmp) && tokens[current + 1].type == TOKEN_IDENTIFIER && 
+            tokens[current + 2].type == TOKEN_LPAREN)
         {
             hasRetType = true;
             retType = tmp;
@@ -477,8 +513,10 @@ void GAParser::ParseFuncDecl(ASTNode &parent)
 
         ASTNode fn(NODE_FUNC_DECL, name.line, name.column);
         fn.text = name.text;
+        
         if (hasRetType)
             fn.declaredType = retType;
+
         current += (hasRetType ? 2 : 2);
         
         if (tokens[current].type == TOKEN_LPAREN)
@@ -549,6 +587,7 @@ void GAParser::ParseVarDecl(ASTNode &parent)
                  tokens[current + 1].type == TOKEN_IDENTIFIER)
     {
         string tkn = tokens[current].text;
+
         if (tkn == "int")
             leadingType = TYPE_INT;
         else if (tkn == "float32")
@@ -568,11 +607,17 @@ void GAParser::ParseVarDecl(ASTNode &parent)
             tokens[current + 1].type == TOKEN_IDENTIFIER)
         {
             string tkn2 = tokens[current].text;
-            if (tkn2 == "int") leadingType = TYPE_INT;
-            else if (tkn2 == "float32") leadingType = TYPE_FLOAT32;
-            else if (tkn2 == "float64") leadingType = TYPE_FLOAT64;
-            else if (tkn2 == "void") leadingType = TYPE_VOID;
-            else if (tkn2 == "cgavec") leadingType = TYPE_CGAVEC;
+            
+            if (tkn2 == "int") 
+                leadingType = TYPE_INT;
+            else if (tkn2 == "float32") 
+                leadingType = TYPE_FLOAT32;
+            else if (tkn2 == "float64") 
+                leadingType = TYPE_FLOAT64;
+            else if (tkn2 == "void")
+                leadingType = TYPE_VOID;
+            else if (tkn2 == "cgavec") 
+                leadingType = TYPE_CGAVEC;
 
             ++current;
         }
@@ -910,11 +955,18 @@ void GAParser::ParseParams(ASTNode &parent)
             if (current + 1 < tokens.size() && tokens[current + 1].type == TOKEN_IDENTIFIER)
             {
                 string tt = tokens[current].text;
-                if (tt == "int") leadingType = TYPE_INT;
-                else if (tt == "float32") leadingType = TYPE_FLOAT32;
-                else if (tt == "float64") leadingType = TYPE_FLOAT64;
-                else if (tt == "void") leadingType = TYPE_VOID;
-                else if (tt == "cgavec") leadingType = TYPE_CGAVEC;
+                
+                if (tt == "int")
+                    leadingType = TYPE_INT;
+                else if (tt == "float32")
+                    leadingType = TYPE_FLOAT32;
+                else if (tt == "float64")
+                    leadingType = TYPE_FLOAT64;
+                else if (tt == "void")
+                    leadingType = TYPE_VOID;
+                else if (tt == "cgavec")
+                    leadingType = TYPE_CGAVEC;
+                
                 ++current;
             }
 
@@ -987,24 +1039,69 @@ void GAParser::BuildSymbolTable()
 {
     symbolTable.clear();
 
-    for (const ASTNode &n : root.children)
+    Symbol ext1;
+    ext1.name           = "printf";
+    ext1.kind           = SYM_FUNC;
+    ext1.scopeLevel     = 0;
+    ext1.declaredType   = TYPE_INT;
+    ext1.type           = TYPE_INT;
+    ext1.declLine       = 0;
+    ext1.declCol        = 0;
+    ext1.paramCount     = -1;
+
+    symbolTable.push_back(ext1);
+
+    Symbol ext2;
+    ext2.name           = "cgarand";
+    ext2.kind           = SYM_FUNC;
+    ext2.scopeLevel     = 0;
+    ext2.declaredType   = TYPE_CGAVEC;
+    ext2.type           = TYPE_CGAVEC;
+    ext2.declLine       = 0;
+    ext2.declCol        = 0;
+    ext2.paramCount     = 0;
+
+    symbolTable.push_back(ext2);
+
+    uint32_t nextId = 1;
+    vector<vector<int>> stackPaths;
+    stackPaths.push_back(vector<int>());
+
+    while (!stackPaths.empty())
     {
+        vector<int> path = stackPaths.back();
+        stackPaths.pop_back();
+
+        ASTNode &n = GetNodeByPath(path);
+        n.nodeId = nextId++;
+
+        for (int i = (int)n.children.size() - 1; i >= 0; --i)
+        {
+            vector<int> childPath = path;
+            childPath.push_back(i);
+            stackPaths.push_back(childPath);
+        }
+    }
+
+    for (size_t i = 0; i < root.children.size(); ++i)
+    {
+        const ASTNode &n = root.children[i];
+
         if (n.type == NODE_FUNC_DECL)
         {
             Symbol f;
-
-            f.name          = n.text;
-            f.kind          = SYM_FUNC;
-            f.declaredType  = n.declaredType;
+            f.name = n.text;
+            f.kind = SYM_FUNC;
+            f.declaredType = n.declaredType;
 
             if (f.declaredType != TYPE_UNKNOWN)
                 f.type = f.declaredType;
-            
-            f.scopeLevel    = 0;
-            f.declLine      = n.line;
-            f.declCol       = n.column;
-            int pc          = 0;
 
+            f.scopeLevel = 0;
+            f.declLine = n.line;
+            f.declCol = n.column;
+
+            int pc = 0;
             for (const ASTNode &c : n.children)
             {
                 if (c.type == NODE_VAR_DECL)
@@ -1012,109 +1109,127 @@ void GAParser::BuildSymbolTable()
             }
 
             f.paramCount = pc;
+            f.astNodeIdx = n.nodeId;
+
+            for (const ASTNode &c : n.children)
+            {
+                if (c.type == NODE_VAR_DECL)
+                {
+                    f.paramTypes.push_back(c.declaredType);
+                }
+            }
             symbolTable.push_back(f);
         }
 
         if (n.type == NODE_VAR_DECL)
         {
             Symbol g;
+            g.name           = n.text;
+            g.kind           = SYM_GLOBAL;
+            g.declaredType   = n.declaredType;
 
-            g.name          = n.text;
-            g.kind          = SYM_GLOBAL;
-            g.declaredType  = n.declaredType;
             if (g.declaredType != TYPE_UNKNOWN)
                 g.type = g.declaredType;
-            g.scopeLevel    = 0;
-            g.declLine      = n.line;
-            g.declCol       = n.column;
+            
+            g.scopeLevel     = 0;
+            g.declLine       = n.line;
+            g.declCol        = n.column;
+            g.astNodeIdx     = n.nodeId;
 
             symbolTable.push_back(g);
         }
 
-        if (n.type == NODE_IDX || n.type == NODE_EXPR)
+        if ((n.type == NODE_IDX || n.type == NODE_EXPR) && !n.text.empty())
         {
-            if (!n.text.empty())
+            bool found = false;
+            for (size_t si = 0; si < symbolTable.size(); ++si)
             {
-                bool found = false;
-                for (size_t si = 0; si < symbolTable.size(); ++si)
+                if (symbolTable[si].name == n.text)
                 {
-                    if (symbolTable[si].name == n.text)
-                    {
-                        found = true;
-                        break;
-                    }
+                    found = true;
+                    break;
                 }
+            }
 
-                if (!found)
-                {
-                    Symbol g2;
+            if (!found)
+            {
+                Symbol g2;
+                g2.name           = n.text;
+                g2.kind           = SYM_GLOBAL;
+                g2.declaredType   = n.declaredType;
 
-                    g2.name       = n.text;
-                    g2.kind       = SYM_GLOBAL;
-                    g2.declaredType = n.declaredType;
+                if (g2.declaredType != TYPE_UNKNOWN)
+                    g2.type = g2.declaredType;
+                
+                g2.scopeLevel     = 0;
+                g2.declLine       = n.line;
+                g2.declCol        = n.column;
+                g2.astNodeIdx     = n.nodeId;
 
-                    if (g2.declaredType != TYPE_UNKNOWN)
-                        g2.type = g2.declaredType;
-
-                    g2.scopeLevel = 0;
-                    g2.declLine   = n.line;
-                    g2.declCol    = n.column;
-
-                    symbolTable.push_back(g2);
-                }
+                symbolTable.push_back(g2);
             }
         }
     }
 
-    for (const ASTNode &fn : root.children)
+    for (size_t fi = 0; fi < root.children.size(); ++fi)
     {
+        const ASTNode &fn = root.children[fi];
         if (fn.type != NODE_FUNC_DECL)
             continue;
 
-        for (const ASTNode &c : fn.children)
+        for (size_t ci = 0; ci < fn.children.size(); ++ci)
         {
+            const ASTNode &c = fn.children[ci];
             if (c.type == NODE_VAR_DECL)
             {
                 Symbol p;
-                p.name          = c.text;
-                p.kind          = SYM_PARAM;
-                    p.declaredType  = c.declaredType;
-                    if (p.declaredType != TYPE_UNKNOWN)
-                        p.type = p.declaredType;
-                p.scopeLevel    = 1;
-                p.declLine      = c.line;
-                p.declCol       = c.column;
+                p.name           = c.text;
+                p.kind           = SYM_PARAM;
+                p.declaredType   = c.declaredType;
+
+                if (p.declaredType != TYPE_UNKNOWN)
+                    p.type = p.declaredType;
+
+                p.scopeLevel     = 1;
+                p.declLine       = c.line;
+                p.declCol        = c.column;
+                p.astNodeIdx     = c.nodeId;
 
                 symbolTable.push_back(p);
-
                 continue;
             }
 
-            vector<const ASTNode*> stack;
+            vector<vector<int>> stack;
             vector<unsigned> stackLevel;
-
-            stack.push_back(&c);
+            vector<int> startPath;
+            startPath.push_back((int)fi);
+            startPath.push_back((int)ci);
+            stack.push_back(startPath);
             stackLevel.push_back(2);
 
             while (!stack.empty())
             {
-                const ASTNode *node = stack.back();
+                vector<int> path = stack.back();
                 stack.pop_back();
                 unsigned level = stackLevel.back();
                 stackLevel.pop_back();
 
-                if (node->type == NODE_VAR_DECL)
+                ASTNode &node = GetNodeByPath(path);
+
+                if (node.type == NODE_VAR_DECL)
                 {
                     Symbol s;
-
-                    s.name          = node->text;
+                    s.name          = node.text;
                     s.kind          = (level == 0) ? SYM_GLOBAL : SYM_VAR;
-                        s.declaredType  = node->declaredType;
-                        if (s.declaredType != TYPE_UNKNOWN)
-                            s.type = s.declaredType;
+                    s.declaredType  = node.declaredType;
+
+                    if (s.declaredType != TYPE_UNKNOWN)
+                        s.type = s.declaredType;
+                    
                     s.scopeLevel    = level;
-                    s.declLine      = node->line;
-                    s.declCol       = node->column;
+                    s.declLine      = node.line;
+                    s.declCol       = node.column;
+                    s.astNodeIdx    = node.nodeId;
 
                     symbolTable.push_back(s);
 
@@ -1122,62 +1237,436 @@ void GAParser::BuildSymbolTable()
                 }
 
                 unsigned nextLevel = level;
-
-                if (node->type == NODE_BLOCK && nextLevel < 2u)
+                if (node.type == NODE_BLOCK && nextLevel < 2u)
                     nextLevel = 2u;
 
-                for (int i = (int)node->children.size() - 1; i >= 0; --i)
+                for (int i = (int)node.children.size() - 1; i >= 0; --i)
                 {
-                    stack.push_back(&node->children[i]);
+                    vector<int> childPath = path;
+                    childPath.push_back(i);
+                    stack.push_back(childPath);
                     stackLevel.push_back(nextLevel);
                 }
             }
         }
     }
 
-    vector<const ASTNode*> todo;
-    todo.push_back(&root);
+    vector<vector<int>> todo;
+    todo.push_back(vector<int>());
 
     while (!todo.empty())
     {
-        const ASTNode *n = todo.back();
+        vector<int> path = todo.back();
         todo.pop_back();
 
-        if (n->type == NODE_IDX || n->type == NODE_EXPR)
+        ASTNode &n = GetNodeByPath(path);
+
+        if ((n.type == NODE_IDX || n.type == NODE_EXPR) && !n.text.empty())
         {
-            if (!n->text.empty())
+            bool found = false;
+            for (size_t si = 0; si < symbolTable.size(); ++si)
             {
-                bool found = false;
-                for (size_t si = 0; si < symbolTable.size(); ++si)
+                if (symbolTable[si].name == n.text)
                 {
-                    if (symbolTable[si].name == n->text)
-                    {
-                        found = true;
-                        break;
-                    }
+                    found = true;
+                    break;
                 }
+            }
 
-                if (!found)
-                {
-                    Symbol g3;
+            if (!found)
+            {
+                Symbol g3;
+                g3.name          = n.text;
+                g3.kind          = SYM_GLOBAL;
+                g3.declaredType  = n.declaredType;
 
-                    g3.name       = n->text;
-                    g3.kind       = SYM_GLOBAL;
-                    g3.declaredType = n->declaredType;
-                    
-                    if (g3.declaredType != TYPE_UNKNOWN)
-                        g3.type = g3.declaredType;
-                        
-                    g3.scopeLevel = 0;
-                    g3.declLine   = n->line;
-                    g3.declCol    = n->column;
+                if (g3.declaredType != TYPE_UNKNOWN)
+                    g3.type = g3.declaredType;
 
-                    symbolTable.push_back(g3);
-                }
+                g3.scopeLevel    = 0;
+                g3.declLine      = n.line;
+                g3.declCol       = n.column;
+                g3.astNodeIdx    = n.nodeId;
+
+                symbolTable.push_back(g3);
             }
         }
 
-        for (const ASTNode &c : n->children)
-            todo.push_back(&c);
+        for (int i = (int)n.children.size() - 1; i >= 0; --i)
+        {
+            vector<int> childPath = path;
+            childPath.push_back(i);
+            todo.push_back(childPath);
+        }
+    }
+}
+/**
+ * TypeToString - Convert a type enum to a string.
+ * 
+ * @param t     [in]    Type to convert.
+ * 
+ * @return      String representation of the type.
+ */
+
+static const char *TypeToString(Types t)
+{
+    switch (t)
+    {
+        case TYPE_INT: 
+        
+            return "INT";
+        
+        case TYPE_FLOAT32: 
+        
+            return "FLOAT32";
+        
+        case TYPE_FLOAT64:
+        
+            return "FLOAT64";
+        
+        case TYPE_VOID:
+        
+            return "VOID";
+        
+        case TYPE_CGAVEC:
+        
+            return "CGAVEC";
+        
+        default: 
+        
+            return "UNKNOWN";
+    }
+}
+
+/**
+ * IsNumber - Check if a type is numeric (int or float).
+ * 
+ * @param t     [in]    Type to check.
+ * 
+ * @return      true if numeric, false otherwise.
+ */
+
+static bool IsNumeric(Types t)
+{
+    return t == TYPE_INT || t == TYPE_FLOAT32 || t == TYPE_FLOAT64;
+}
+
+/**
+ * PromoteNumberic - Promote two numeric types to a common type.
+ */
+
+static Types PromoteNumeric(Types a, Types b)
+{
+    if (a == TYPE_FLOAT64 || b == TYPE_FLOAT64) 
+        return TYPE_FLOAT64;
+    
+    if (a == TYPE_FLOAT32 || b == TYPE_FLOAT32) 
+        return TYPE_FLOAT32;
+    
+    if (a == TYPE_INT && b == TYPE_INT) 
+        return TYPE_INT;
+
+    return TYPE_UNKNOWN;
+}
+
+
+/**
+ * GAParser::InferTypes - Traverse the AST in post-order and infer
+ * types for symbols used in exprssions.
+ */
+
+void GAParser::InferTypes()
+{
+    const int maxIter = 8;
+
+    for (int iter = 0; iter < maxIter; ++iter)
+    {
+        bool changed = false;
+
+        struct Frame { vector<int> path; bool entered; };
+        vector<Frame> stack;
+        stack.push_back(Frame());
+        stack.back().path.clear();
+        stack.back().entered = false;
+
+        while (!stack.empty())
+        {
+            Frame fr = stack.back();
+            stack.pop_back();
+
+            ASTNode &node = GetNodeByPath(fr.path);
+
+            if (!fr.entered)
+            {
+                fr.entered = true;
+                stack.push_back(fr);
+
+                for (int i = (int)node.children.size() - 1; i >= 0; --i)
+                {
+                    Frame child;
+                    child.path = fr.path;
+                    child.path.push_back(i);
+                    child.entered = false;
+                    stack.push_back(child);
+                }
+
+                continue;
+            }
+
+            switch (node.type)
+            {
+                case NODE_LIT:
+                {
+                    if (!node.text.empty() && node.text.find('.') != string::npos)
+                        node.inferredType = TYPE_FLOAT32;
+                    else
+                        node.inferredType = TYPE_INT;
+                    break;
+                }
+
+                case NODE_EXPR:
+                {
+                    if (node.symbolId >= 0 && node.symbolId < (int)symbolTable.size())
+                        node.inferredType = symbolTable[node.symbolId].type;
+                    break;
+                }
+
+                case NODE_IDX:
+                {
+                    if (node.symbolId >= 0 && node.symbolId < (int)symbolTable.size())
+                    {
+                        Types container = symbolTable[node.symbolId].type;
+                        if (container == TYPE_CGAVEC)
+                            node.inferredType = TYPE_CGAVEC;
+                        else
+                            node.inferredType = TYPE_UNKNOWN;
+                    }
+                    break;
+                }
+
+                case NODE_CALL:
+                {
+                    if (node.symbolId >= 0 && node.symbolId < (int)symbolTable.size())
+                    {
+                        Symbol &sym = symbolTable[node.symbolId];
+                        node.inferredType = sym.type;
+
+                        int provided = 0;
+                        for (const ASTNode &c : node.children)
+                            ++provided;
+
+                        if (sym.paramCount >= 0 && sym.paramCount != 0 && sym.paramCount != provided)
+                        {
+                            PushDiagnostic(node.line, node.column,
+                                           string("call to '") + sym.name + "' expected " +
+                                           to_string(sym.paramCount) + " args but got " + to_string(provided),
+                                           true);
+                        }
+                    }
+                    break;
+                }
+
+                case NODE_BINOP:
+                {
+                    if (node.children.size() >= 2)
+                    {
+                        Types L = node.children[0].inferredType;
+                        Types R = node.children[1].inferredType;
+
+                        if (IsNumeric(L) && IsNumeric(R))
+                            node.inferredType = PromoteNumeric(L, R);
+                        else if (L == TYPE_CGAVEC && R == TYPE_CGAVEC)
+                            node.inferredType = TYPE_CGAVEC;
+                        else
+                            node.inferredType = TYPE_UNKNOWN;
+                    }
+                    break;
+                }
+
+                case NODE_VAR_DECL:
+                {
+                    bool hasInit = false;
+                    Types init = TYPE_UNKNOWN;
+
+                    auto isNumericLiteralString = [&](const string &s) -> bool
+                    {
+                        if (s.empty())
+                            return false;
+                        size_t i = 0;
+                        if (s[0] == '+' || s[0] == '-')
+                            i = 1;
+                        bool seenDigit = false;
+                        for (; i < s.size(); ++i)
+                        {
+                            if (isdigit((unsigned char)s[i]))
+                            {
+                                seenDigit = true;
+                                continue;
+                            }
+                            if (s[i] == '.')
+                                continue;
+                            return false;
+                        }
+                        return seenDigit;
+                    };
+
+                    if (!node.children.empty())
+                    {
+                        if (node.children.size() >= 2)
+                        {
+                            hasInit = true;
+                            init = node.children.back().inferredType;
+                        }
+                        else
+                        {
+                            const ASTNode &c0 = node.children[0];
+                            if (c0.type == NODE_LIT && !isNumericLiteralString(c0.text))
+                            {
+                                hasInit = false;
+                            }
+                            else
+                            {
+                                hasInit = true;
+                                init = c0.inferredType;
+                            }
+                        }
+                    }
+
+                    if (hasInit)
+                    {
+                        if (node.declaredType != TYPE_UNKNOWN)
+                        {
+                            if (!(IsNumeric(init) && IsNumeric(node.declaredType)) && init != node.declaredType)
+                            {
+                                PushDiagnostic(node.line, node.column,
+                                               string("initializer type '") + TypeToString(init) +
+                                               "' does not match declared type '" + TypeToString(node.declaredType) + "' for '" +
+                                               node.text + "'",
+                                               true);
+                            }
+
+                            for (Symbol &s : symbolTable)
+                            {
+                                if (s.astNodeIdx == node.nodeId)
+                                {
+                                    if (s.type != node.declaredType)
+                                    {
+                                        s.type = node.declaredType;
+                                        changed = true;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            for (Symbol &s : symbolTable)
+                            {
+                                if (s.astNodeIdx == node.nodeId)
+                                {
+                                    if (s.type != init)
+                                    {
+                                        s.type = init;
+                                        changed = true;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                case NODE_RET:
+                {
+                    if (!node.children.empty())
+                    {
+                        Types rt            = node.children[0].inferredType;
+                        node.inferredType   = rt;
+
+                        vector<int> path;
+
+                        struct SFrame 
+                        { 
+                            vector<int> p;
+                        };
+
+                        vector<SFrame> sstack;
+                        sstack.push_back(SFrame());
+                        bool foundFunc = false;
+                        uint32_t funcNodeId = 0;
+
+                        while (!sstack.empty() && !foundFunc)
+                        {
+                            SFrame cur = sstack.back();
+                            sstack.pop_back();
+                            ASTNode &ncur = GetNodeByPath(cur.p);
+                            
+                            if (ncur.nodeId == node.nodeId)
+                            {
+                                vector<int> up = cur.p;
+                                while (!up.empty())
+                                {
+                                    ASTNode &maybe = GetNodeByPath(up);
+                                    if (maybe.type == NODE_FUNC_DECL)
+                                    {
+                                        funcNodeId = maybe.nodeId;
+                                        foundFunc = true;
+                                        break;
+                                    }
+                                    up.pop_back();
+                                }
+                                break;
+                            }
+
+                            for (int i = (int)ncur.children.size() - 1; i >= 0; --i)
+                            {
+                                SFrame nf;
+                                nf.p = cur.p;
+                                nf.p.push_back(i);
+                                sstack.push_back(nf);
+                            }
+                        }
+
+                        if (foundFunc)
+                        {
+                            for (Symbol &s : symbolTable)
+                            {
+                                if (s.kind == SYM_FUNC && s.astNodeIdx == funcNodeId)
+                                {
+                                    if (s.declaredType == TYPE_UNKNOWN)
+                                    {
+                                        if (s.type != rt)
+                                        {
+                                            s.type = rt;
+                                            changed = true;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (!(IsNumeric(rt) && IsNumeric(s.declaredType)) && rt != s.declaredType)
+                                        {
+                                            PushDiagnostic(node.line, node.column, string("return type '") +
+                                                           TypeToString(rt) + "' does not match function declared type '" +
+                                                           TypeToString(s.declaredType) + "'",
+                                                           true);
+                                        }
+                                    }
+
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                default:
+                    break;
+            }
+        }
+
+        if (!changed)
+            break;
     }
 }

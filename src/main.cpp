@@ -108,6 +108,7 @@ int main(int argc, char **argv)
     parser.GenerateAST();
     parser.BuildSymbolTable();
     parser.ResolveNames();
+    parser.InferTypes();
 
     if (clArgs.printTokens)
         parser.PrintTokens();
@@ -116,6 +117,12 @@ int main(int argc, char **argv)
         parser.PrintAST();
 
     parser.PrintSymbolTable();
+    parser.PrintDiagnostics();
+
+    if (parser.HasErrors())
+    {
+        return 1;
+    }
 
     return 0;
 }
