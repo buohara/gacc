@@ -12,9 +12,12 @@ struct CLArgs
     string outputFilename;
     bool printTokens;
     bool printAST;
+    bool dumpSymTab;
+    bool dumpMLIR;
 
-    CLArgs() : printTokens(false), printAST(false) {}
+    CLArgs() : printTokens(false), printAST(false), dumpSymTab(false), dumpMLIR(false) {}
 };
+
 
 /**
  * ParseCommandLine - Parse command line arguments.
@@ -60,6 +63,18 @@ void ParseCommandLine(vector<string> &args, CLArgs &clArgs)
             continue;
         }
 
+        if (args[i] == "-sym")
+        {
+            clArgs.dumpSymTab = true;
+            continue;
+        }
+
+        if (args[i] == "-mlir")
+        {
+            clArgs.dumpMLIR = true;
+            continue;
+        }
+
         clArgs.inputFilename = args[i];
     }
 }
@@ -81,6 +96,11 @@ void InitMLIRContext(MLIRContext &context)
     registry.insert<cf::ControlFlowDialect>();
 
     context.appendDialectRegistry(registry);
+    context.getOrLoadDialect<ga::GADialect>();
+    context.getOrLoadDialect<memref::MemRefDialect>();
+    context.getOrLoadDialect<func::FuncDialect>();
+    context.getOrLoadDialect<arith::ArithDialect>();
+    context.getOrLoadDialect<cf::ControlFlowDialect>();
 }
 
 /**
@@ -109,6 +129,7 @@ int main(int argc, char **argv)
     parser.BuildSymbolTable();
     parser.ResolveNames();
     parser.InferTypes();
+    parser.ComputeLoweredTypes();
 
     if (clArgs.printTokens)
         parser.PrintTokens();
@@ -116,8 +137,13 @@ int main(int argc, char **argv)
     if (clArgs.printAST)
         parser.PrintAST();
 
-    parser.PrintSymbolTable();
-    parser.PrintDiagnostics();
+    if (clArgs.dumpSymTab)
+        parser.PrintSymbolTable();
+
+    parser.PrintDiags();
+
+    if (clArgs.dumpMLIR)
+        parser.LowerToMLIR(context);
 
     if (parser.HasErrors())
     {

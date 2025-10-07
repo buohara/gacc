@@ -4,11 +4,35 @@ static bool IsTypeToken(const Token &t, Types &outType)
 {
     if (t.type == TOKEN_IDENTIFIER)
     {
-        if (t.text == "int") { outType = TYPE_INT; return true; }
-        if (t.text == "float32") { outType = TYPE_FLOAT32; return true; }
-        if (t.text == "float64") { outType = TYPE_FLOAT64; return true; }
-        if (t.text == "void") { outType = TYPE_VOID; return true; }
-        if (t.text == "cgavec") { outType = TYPE_CGAVEC; return true; }
+        if (t.text == "int") 
+        {
+                outType = TYPE_INT; 
+                return true; 
+        }
+
+        if (t.text == "float32") 
+        {
+            outType = TYPE_FLOAT32; 
+            return true; 
+        }
+
+        if (t.text == "float64") 
+        {
+            outType = TYPE_FLOAT64; 
+            return true; 
+        }
+
+        if (t.text == "void") 
+        {
+            outType = TYPE_VOID; 
+            return true; 
+        }
+
+        if (t.text == "cgavec") 
+        {
+            outType = TYPE_CGAVEC; 
+            return true; 
+        }
 
         return false;
     }
@@ -132,7 +156,7 @@ void GAParser::ResolveNames()
                     if (resolved >= 0)
                         n.symbolId = resolved;
                     else
-                        PushDiagnostic(n.line, n.column, string("unresolved identifier '") + n.text + "'", true);
+                        PushDiag(n.line, n.column, string("unresolved identifier '") + n.text + "'", true);
                 }
             }
 
@@ -180,39 +204,39 @@ ASTNode &GAParser::GetNodeByPath(const vector<int> &path)
 }
 
 /**
- * GAParser::PushDiagnostic - Push a diagnostic message.
+ * GAParser::PushDiag - Push a Diag message.
  */
 
-void GAParser::PushDiagnostic(uint32_t line, uint32_t column, const string &msg, bool isError)
+void GAParser::PushDiag(uint32_t line, uint32_t column, const string &msg, bool isError)
 {
-    Diagnostic d;
+    Diag d;
 
     d.line      = line;
     d.column    = column;
     d.message   = msg;
     d.isError   = isError;
-    diagnostics.push_back(std::move(d));
+    diags.push_back(std::move(d));
 }
 
 /**
- * GAParser::PrintDiagnostics - Print all diagnostics.
+ * GAParser::PrintDiags - Print all Diags.
  */
 
-void GAParser::PrintDiagnostics()
+void GAParser::PrintDiags()
 {
-    for (const Diagnostic &d : diagnostics)
+    for (const Diag &d : diags)
     {
         printf("%s at %u:%u: %s\n", d.isError ? "error" : "warning", d.line, d.column, d.message.c_str());
     }
 }
 
 /**
- * GAParser::HasErrors - Check if there are any error diagnostics.
+ * GAParser::HasErrors - Check if there are any error Diags.
  */
 
 bool GAParser::HasErrors()
 {
-    for (const Diagnostic &d : diagnostics)
+    for (const Diag &d : diags)
         if (d.isError) return true;
 
     return false;
@@ -1090,18 +1114,21 @@ void GAParser::BuildSymbolTable()
         if (n.type == NODE_FUNC_DECL)
         {
             Symbol f;
-            f.name = n.text;
-            f.kind = SYM_FUNC;
-            f.declaredType = n.declaredType;
+
+            f.name          = n.text;
+            f.kind          = SYM_FUNC;
+            f.declaredType  = n.declaredType;
 
             if (f.declaredType != TYPE_UNKNOWN)
                 f.type = f.declaredType;
 
-            f.scopeLevel = 0;
-            f.declLine = n.line;
-            f.declCol = n.column;
+            f.scopeLevel    = 0;
+            f.declLine      = n.line;
+            f.declCol       = n.column;
+            f.astNodeIdx    = n.nodeId;
 
             int pc = 0;
+            
             for (const ASTNode &c : n.children)
             {
                 if (c.type == NODE_VAR_DECL)
@@ -1180,6 +1207,7 @@ void GAParser::BuildSymbolTable()
         for (size_t ci = 0; ci < fn.children.size(); ++ci)
         {
             const ASTNode &c = fn.children[ci];
+
             if (c.type == NODE_VAR_DECL)
             {
                 Symbol p;
@@ -1194,6 +1222,46 @@ void GAParser::BuildSymbolTable()
                 p.declLine       = c.line;
                 p.declCol        = c.column;
                 p.astNodeIdx     = c.nodeId;
+
+                if (!c.children.empty() && c.children.size() == 1)
+                {
+                    const ASTNode &pc0 = c.children[0];
+
+                    if (pc0.type == NODE_LIT)
+                    {
+                        errno           = 0;
+                        char *endptr    = nullptr;
+                        unsigned long v = strtoul(pc0.text.c_str(), &endptr, 10);
+
+                        if (endptr != pc0.text.c_str() && *endptr == '\0' && errno == 0)
+                            p.arraySize = (uint32_t)v;
+                        else
+                            p.arraySize = 0;
+                    }
+                    else if ((pc0.type == NODE_EXPR || pc0.type == NODE_IDX) && !pc0.text.empty())
+                    {
+                        bool foundSym = false;
+                        
+                        for (const Symbol &ss : symbolTable)
+                        {
+                            if (ss.name == pc0.text)
+                            {
+                                foundSym = true;
+
+                                if (ss.arraySize > 0)
+                                    p.arraySize = ss.arraySize;
+                                else
+                                    PushDiag(c.line, c.column, string("array-size identifier '") + pc0.text + " is not a compile-time size", true);
+                                break;
+                            }
+                        }
+
+                        if (!foundSym)
+                        {
+                            PushDiag(c.line, c.column, string("array-size identifier '") + pc0.text + " not found", true);
+                        }
+                    }
+                }
 
                 symbolTable.push_back(p);
                 continue;
@@ -1231,12 +1299,53 @@ void GAParser::BuildSymbolTable()
                     s.declCol       = node.column;
                     s.astNodeIdx    = node.nodeId;
 
+                    if (!node.children.empty() && node.children.size() == 1)
+                    {
+                        const ASTNode &lc0 = node.children[0];
+
+                        if (lc0.type == NODE_LIT)
+                        {
+                            errno           = 0;
+                            char *endptr    = nullptr;
+                            unsigned long v = strtoul(lc0.text.c_str(), &endptr, 10);
+
+                            if (endptr != lc0.text.c_str() && *endptr == '\0' && errno == 0)
+                                s.arraySize = (uint32_t)v;
+                            else
+                                s.arraySize = 0;
+                        }
+                        else if ((lc0.type == NODE_EXPR || lc0.type == NODE_IDX) && !lc0.text.empty())
+                        {
+                            bool foundSym = false;
+
+                            for (const Symbol &ss : symbolTable)
+                            {
+                                if (ss.name == lc0.text)
+                                {
+                                    foundSym = true;
+
+                                    if (ss.arraySize > 0)
+                                        s.arraySize = ss.arraySize;
+                                    else
+                                        PushDiag(node.line, node.column, string("array-size identifier '") + lc0.text + " is not a compile-time size", true);
+                                    break;
+                                }
+                            }
+
+                            if (!foundSym)
+                            {
+                                PushDiag(node.line, node.column, string("array-size identifier '") + lc0.text + " not found", true);
+                            }
+                        }
+                    }
+
                     symbolTable.push_back(s);
 
                     continue;
                 }
 
                 unsigned nextLevel = level;
+
                 if (node.type == NODE_BLOCK && nextLevel < 2u)
                     nextLevel = 2u;
 
@@ -1264,6 +1373,7 @@ void GAParser::BuildSymbolTable()
         if ((n.type == NODE_IDX || n.type == NODE_EXPR) && !n.text.empty())
         {
             bool found = false;
+
             for (size_t si = 0; si < symbolTable.size(); ++si)
             {
                 if (symbolTable[si].name == n.text)
@@ -1457,7 +1567,7 @@ void GAParser::InferTypes()
 
                         if (sym.paramCount >= 0 && sym.paramCount != 0 && sym.paramCount != provided)
                         {
-                            PushDiagnostic(node.line, node.column,
+                            PushDiag(node.line, node.column,
                                            string("call to '") + sym.name + "' expected " +
                                            to_string(sym.paramCount) + " args but got " + to_string(provided),
                                            true);
@@ -1492,10 +1602,14 @@ void GAParser::InferTypes()
                     {
                         if (s.empty())
                             return false;
+
                         size_t i = 0;
+
                         if (s[0] == '+' || s[0] == '-')
                             i = 1;
+
                         bool seenDigit = false;
+
                         for (; i < s.size(); ++i)
                         {
                             if (isdigit((unsigned char)s[i]))
@@ -1503,10 +1617,13 @@ void GAParser::InferTypes()
                                 seenDigit = true;
                                 continue;
                             }
+
                             if (s[i] == '.')
                                 continue;
+
                             return false;
                         }
+
                         return seenDigit;
                     };
 
@@ -1520,6 +1637,7 @@ void GAParser::InferTypes()
                         else
                         {
                             const ASTNode &c0 = node.children[0];
+
                             if (c0.type == NODE_LIT && !isNumericLiteralString(c0.text))
                             {
                                 hasInit = false;
@@ -1538,7 +1656,7 @@ void GAParser::InferTypes()
                         {
                             if (!(IsNumeric(init) && IsNumeric(node.declaredType)) && init != node.declaredType)
                             {
-                                PushDiagnostic(node.line, node.column,
+                                PushDiag(node.line, node.column,
                                                string("initializer type '") + TypeToString(init) +
                                                "' does not match declared type '" + TypeToString(node.declaredType) + "' for '" +
                                                node.text + "'",
@@ -1646,7 +1764,7 @@ void GAParser::InferTypes()
                                     {
                                         if (!(IsNumeric(rt) && IsNumeric(s.declaredType)) && rt != s.declaredType)
                                         {
-                                            PushDiagnostic(node.line, node.column, string("return type '") +
+                                            PushDiag(node.line, node.column, string("return type '") +
                                                            TypeToString(rt) + "' does not match function declared type '" +
                                                            TypeToString(s.declaredType) + "'",
                                                            true);
@@ -1669,4 +1787,101 @@ void GAParser::InferTypes()
         if (!changed)
             break;
     }
+}
+
+/**
+ * GAParser::ComputeLoweredTypes - Compute the lowered types for all symbols
+ * in the symbol table.
+ */
+
+void GAParser::ComputeLoweredTypes()
+{
+    for (Symbol &s : symbolTable)
+    {
+        string tstr;
+        switch (s.type)
+        {
+            case TYPE_INT:
+
+                tstr = "i32";
+                break;
+
+            case TYPE_FLOAT32: 
+
+                tstr = "f32";
+                break;
+            
+            case TYPE_FLOAT64: 
+            
+                tstr = "f64";
+                break;
+            
+            case TYPE_VOID: 
+            
+                tstr = "()";
+                break;
+            
+            case TYPE_CGAVEC:
+
+                if (s.arraySize > 0)
+                    tstr = string("memref[") + to_string(s.arraySize) + string(" x 32 x f32]");
+                else
+                    tstr = string("memref<32 x f32>");
+                break;
+            
+            default:
+
+                tstr = "<?>"; 
+                break;
+        }
+
+        if ((s.kind == SYM_VAR || s.kind == SYM_GLOBAL || s.kind == SYM_PARAM) && s.isAddressable)
+        {
+            if (tstr.rfind("memref", 0) != 0)
+            {
+                if (s.arraySize > 0)
+                    tstr = string("memref[") + to_string(s.arraySize) + string(" x ") + tstr + string("]");
+                else
+                    tstr = string("memref<? x ") + tstr + string(">");
+            }
+        }
+
+        s.loweredType = tstr;
+    }
+}
+
+/**
+ * GAParser::LowerToMLIR - Lower the AST to MLIR and print it to stdout.
+ * 
+ * @param ctx   [in]    MLIR context to use.
+ */
+
+void GAParser::LowerToMLIR(MLIRContext &ctx)
+{
+    using namespace mlir;
+
+    OpBuilder builder(&ctx);
+    ModuleOp module = ModuleOp::create(builder.getUnknownLoc());
+
+    for (const Symbol &s : symbolTable)
+    {
+        if (s.kind == SYM_FUNC)
+        {
+            SmallVector<Type, 4> inputs;
+            SmallVector<Type, 1> results;
+
+            auto funcType   = FunctionType::get(&ctx, inputs, results);
+            auto func       = mlir::func::FuncOp::create(builder.getUnknownLoc(), s.name, funcType);
+
+            func.setPrivate();
+            module.push_back(func);
+        }
+        else if (s.kind == SYM_GLOBAL)
+        {
+
+        }
+    }
+
+    module.print(llvm::outs());
+    llvm::outs() << "\n";
 }

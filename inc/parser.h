@@ -4,6 +4,8 @@
 #include "lexer.h"
 
 using namespace std;
+using namespace mlir;
+using namespace llvm;
 
 enum NodeType
 {
@@ -57,7 +59,6 @@ struct Symbol
     bool isAddressable    = false;
     bool isConst          = false;
     bool declaredOnly     = false;
-    // For array declarations, 0 means unknown/dynamic, otherwise static size.
     uint32_t arraySize    = 0;
 
     string loweredType;
@@ -83,19 +84,19 @@ struct ASTNode
     ASTNode(NodeType t, uint32_t l, uint32_t c) : type(t), line(l), column(c), tokenType(TOKEN_UNKNOWN) {}
 };
 
-struct Diagnostic
-    {
-        uint32_t line;
-        uint32_t column;
-        string message;
-        bool isError;
-    };
+struct Diag
+{
+    uint32_t line;
+    uint32_t column;
+    string message;
+    bool isError;
+};
 
 struct GAParser
 {
     vector<Token> tokens;
     vector<Symbol> symbolTable;
-    vector<Diagnostic> diagnostics;
+    vector<Diag> diags;
 
     size_t current;
     ASTNode root;
@@ -109,7 +110,9 @@ struct GAParser
     void GenerateAST();
     void BuildSymbolTable();
     void ResolveNames();
-    ASTNode &GetNodeByPath(const std::vector<int> &path);
+    ASTNode &GetNodeByPath(const vector<int> &path);
+    void ComputeLoweredTypes();
+    void LowerToMLIR(MLIRContext &ctx);
 
     void ParseFuncDecl(ASTNode &parent);
     void ParseVarDecl(ASTNode &parent);
@@ -120,7 +123,7 @@ struct GAParser
     void ParseParams(ASTNode &parent);
     void ParseCallExpr(ASTNode &parent);
     void InferTypes();
-    void PushDiagnostic(uint32_t line, uint32_t column, const string &msg, bool isError=true);
-    void PrintDiagnostics();
+    void PushDiag(uint32_t line, uint32_t column, const string &msg, bool isError=true);
+    void PrintDiags();
     bool HasErrors();
 };
