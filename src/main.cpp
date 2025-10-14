@@ -1,10 +1,6 @@
 #include "common.h"
 #include "lexer.h"
 #include "parser.h"
-#include "gadialect.h"
-
-using namespace llvm;
-using namespace mlir;
 
 struct CLArgs 
 {
@@ -13,9 +9,9 @@ struct CLArgs
     bool printTokens;
     bool printAST;
     bool dumpSymTab;
-    bool dumpMLIR;
+    bool dumpSSA;
 
-    CLArgs() : printTokens(false), printAST(false), dumpSymTab(false), dumpMLIR(false) {}
+    CLArgs() : printTokens(false), printAST(false), dumpSymTab(false), dumpSSA(false) {}
 };
 
 
@@ -69,38 +65,14 @@ void ParseCommandLine(vector<string> &args, CLArgs &clArgs)
             continue;
         }
 
-        if (args[i] == "-mlir")
+        if (args[i] == "-ssa")
         {
-            clArgs.dumpMLIR = true;
+            clArgs.dumpSSA = true;
             continue;
         }
 
         clArgs.inputFilename = args[i];
     }
-}
-
-/**
- * InitMLIRContext - Initialize the MLIR context with necessary dialects.
- * 
- * @param context   [in/out]    MLIR context to initialize.
- */
-
-void InitMLIRContext(MLIRContext &context)
-{
-    DialectRegistry registry;
-
-    registry.insert<ga::GADialect>();
-    registry.insert<memref::MemRefDialect>();
-    registry.insert<func::FuncDialect>();
-    registry.insert<arith::ArithDialect>();
-    registry.insert<cf::ControlFlowDialect>();
-
-    context.appendDialectRegistry(registry);
-    context.getOrLoadDialect<ga::GADialect>();
-    context.getOrLoadDialect<memref::MemRefDialect>();
-    context.getOrLoadDialect<func::FuncDialect>();
-    context.getOrLoadDialect<arith::ArithDialect>();
-    context.getOrLoadDialect<cf::ControlFlowDialect>();
 }
 
 /**
@@ -119,36 +91,11 @@ int main(int argc, char **argv)
 
     ParseCommandLine(args, clArgs);
 
-    MLIRContext context;
-    InitMLIRContext(context);
-
     GAParser parser;
-
     GetTokens(clArgs.inputFilename, parser.tokens);
     parser.GenerateAST();
-    parser.BuildSymbolTable();
-    parser.ResolveNames();
-    parser.InferTypes();
-    parser.ComputeLoweredTypes();
 
-    if (clArgs.printTokens)
-        parser.PrintTokens();
-
-    if (clArgs.printAST)
-        parser.PrintAST();
-
-    if (clArgs.dumpSymTab)
-        parser.PrintSymbolTable();
-
-    parser.PrintDiags();
-
-    if (clArgs.dumpMLIR)
-        parser.LowerToMLIR(context);
-
-    if (parser.HasErrors())
-    {
-        return 1;
-    }
+    
 
     return 0;
 }

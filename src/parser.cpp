@@ -1,11 +1,86 @@
 #include "parser.h"
 #include <functional>
+#include <unordered_map>
+#include <sstream>
 
-using namespace mlir;
-using namespace mlir::scf;
-using namespace mlir::func;
-using namespace mlir::memref;
-using namespace mlir::arith;
+/**
+ * GAParser::LowerSSA - Emit a simple textual SSA-like IR to stdout.
+ * This is a minimal lowering used when MLIR is not available. It prints
+ * function signatures, allocs for arrays and cgavec, simple for-loops,
+ * calls and assignments in a readable SSA-like form.
+ */
+
+void GAParser::LowerSSA()
+{
+    
+}
+
+/**
+ * GAParser::PrintTokens - Print all tokens in the parser.
+ */
+
+void GAParser::PrintTokens() 
+{
+    for (const Token &tok : tokens)
+        printf("Token: Type=%d, Text='%s', Line=%u, Column=%u\n",
+            tok.type, tok.text.c_str(), tok.line, tok.column);
+}
+
+/**
+ * GAParser::ResolveNames - Resolve names in the AST and link to symbol table.
+ */
+
+void GAParser::ResolveNames()
+{
+    
+}
+
+
+/**
+ * GAParser::PrintAST - Print an AST.
+ */
+
+void GAParser::PrintAST() 
+{
+    
+}
+
+/**
+ * GAParser::PrintSymbolTable - Print the symbol table.
+ */
+
+void GAParser::PrintSymbolTable()
+{
+    
+}
+
+/**
+ * GAParser::GenerateAST - Generate the AST from the parsed tokens.
+ */
+
+void GAParser::GenerateAST()
+{
+    root = ASTNode();    
+
+    while (current < tokens.size())
+    {
+        if (tokens[current].type == TOKEN_KW_INT || 
+            tokens[current].type == TOKEN_KW_FLOAT ||
+            tokens[current].type == TOKEN_KW_CGAVEC)
+        {
+            ParseVarDecl(root);
+            continue;
+        }
+
+        if (tokens[current].type == TOKEN_EOF)
+            break;
+
+        if (tokens[current].type == TOKEN_OP_EQ)
+        {
+            ParseAssignment(root);
+        }
+    }
+}
 
 /**
  * IsTypeToken - Check if a token represents a type and output the type.
@@ -14,31 +89,19 @@ using namespace mlir::arith;
  * @param outType   [out]   Output type if token is a type.
  */
 
-static bool IsTypeToken(const Token &t, Types &outType)
+static bool IsTypeToken(const Token &t, Type &outType)
 {
     if (t.type == TOKEN_IDENTIFIER)
     {
         if (t.text == "int") 
         {
-                outType = TYPE_INT; 
-                return true; 
-        }
-
-        if (t.text == "float32") 
-        {
-            outType = TYPE_FLOAT32; 
+            outType = TYPE_INT; 
             return true; 
         }
 
-        if (t.text == "float64") 
+        if (t.text == "float") 
         {
-            outType = TYPE_FLOAT64; 
-            return true; 
-        }
-
-        if (t.text == "void") 
-        {
-            outType = TYPE_VOID; 
+            outType = TYPE_FLOAT; 
             return true; 
         }
 
@@ -61,468 +124,93 @@ static bool IsTypeToken(const Token &t, Types &outType)
 }
 
 /**
- * GAParser::PrintTokens - Print all tokens in the parser.
- */
-
-void GAParser::PrintTokens() 
-{
-    for (const Token &tok : tokens)
-        printf("Token: Type=%d, Text='%s', Line=%u, Column=%u\n",
-            tok.type, tok.text.c_str(), tok.line, tok.column);
-}
-
-/**
- * GAParser::ResolveNames - Resolve names in the AST and link to symbol table.
- */
-
-void GAParser::ResolveNames()
-{
-    vector<map<string,int>> scopeStack;
-    scopeStack.push_back(map<string,int>());
-
-    for (size_t i = 0; i < symbolTable.size(); ++i)
-    {
-        if (symbolTable[i].scopeLevel == 0)
-            scopeStack[0][symbolTable[i].name] = (int)i;
-    }
-
-    struct PFrame { vector<int> path; bool entered; };
-
-    vector<PFrame> pstk;
-    pstk.push_back(PFrame());
-    pstk.back().path.clear();
-    pstk.back().entered = false;
-
-    while (!pstk.empty())
-    {
-        PFrame pf = pstk.back();
-        pstk.pop_back();
-
-        ASTNode &n = GetNodeByPath(pf.path);
-
-        if (!pf.entered)
-        {
-            if (n.type == NODE_FUNC_DECL)
-            {
-                scopeStack.push_back(map<string,int>());
-
-                for (size_t ci = 0; ci < n.children.size(); ++ci)
-                {
-                    const ASTNode &c = n.children[ci];
-
-                    if (c.type == NODE_VAR_DECL)
-                    {
-                        int foundId = -1;
-
-                        for (size_t si = 0; si < symbolTable.size(); ++si)
-                        {
-                            if (symbolTable[si].name == c.text && symbolTable[si].scopeLevel == 1)
-                            {
-                                foundId = (int)si;
-                                break;
-                            }
-                        }
-
-                        if (foundId >= 0)
-                            scopeStack.back()[c.text] = foundId;
-                    }
-                }
-            }
-
-            if (n.type == NODE_BLOCK)
-                scopeStack.push_back(map<string,int>());
-
-            if (n.type == NODE_VAR_DECL)
-            {
-                int foundId = -1;
-
-                for (size_t si = 0; si < symbolTable.size(); ++si)
-                {
-                    if (symbolTable[si].name == n.text && symbolTable[si].scopeLevel >= 1)
-                    {
-                        foundId = (int)si;
-                        break;
-                    }
-                }
-
-                if (foundId >= 0)
-                    scopeStack.back()[n.text] = foundId;
-            }
-
-            if (n.type == NODE_EXPR || n.type == NODE_IDX || n.type == NODE_CALL)
-            {
-                if (!n.text.empty())
-                {
-                    int resolved = -1;
-
-                    for (int si = (int)scopeStack.size() - 1; si >= 0; --si)
-                    {
-                        map<string,int> &m = scopeStack[si];
-                        map<string,int>::iterator it = m.find(n.text);
-                        
-                        if (it != m.end())
-                        {
-                            resolved = it->second;
-                            break;
-                        }
-                    }
-
-                    if (resolved >= 0)
-                        n.symbolId = resolved;
-                    else
-                        PushDiag(n.line, n.column, string("unresolved identifier '") + n.text + "'", true);
-                }
-            }
-
-            pstk.push_back(PFrame());
-            pstk.back().path = pf.path;
-            pstk.back().entered = true;
-
-            for (int i = (int)n.children.size() - 1; i >= 0; --i)
-            {
-                PFrame child;
-                child.path = pf.path;
-                child.path.push_back(i);
-                child.entered = false;
-                pstk.push_back(child);
-            }
-        }
-        else
-        {
-            if (n.type == NODE_BLOCK || n.type == NODE_FUNC_DECL)
-            {
-                if (!scopeStack.empty())
-                    scopeStack.pop_back();
-            }
-        }
-    }
-}
-
-/**
- * GAParser::GetNodeByPath - Get a reference to an AST node by its path.
+ * IsBinaryOp - Check if a token type is a binary operator.
  * 
- * @param path  [in]    Vector of child indices to traverse the AST.
+ * @param t     [in]    Token type to check.
  * 
- * @return Reference to the AST node at the specified path, or the closest valid node if the path is invalid.
+ * @return      true if binary operator, false otherwise.
  */
 
-ASTNode &GAParser::GetNodeByPath(const vector<int> &path)
+static inline bool IsBinaryOp(TokenType t)
 {
-    ASTNode *cur = &root;
-    for (size_t i = 0; i < path.size(); ++i)
-    {
-        int idx = path[i];
-        if (idx < 0 || idx >= (int)cur->children.size())
-            return *cur;
-
-        cur = &cur->children[idx];
-    }
-
-    return *cur;
+    return t == TOKEN_OP_PLUS || t == TOKEN_OP_MINUS || t == TOKEN_OP_STAR || t == TOKEN_OP_SLASH;
 }
 
 /**
- * GAParser::PushDiag - Push a Diag message.
+ * IsAddSub - Check if a token type is addition or subtraction.
  * 
- * @param line      [in]    Line number of the diagnostic.
- * @param column    [in]    Column number of the diagnostic.
- * @param msg       [in]    Diagnostic message.
- * @param isError   [in]    True if this is an error, false if
+ * @param t     [in]    Token type to check.
+ * 
+ * @return      true if addition or subtraction, false otherwise.
  */
 
-void GAParser::PushDiag(uint32_t line, uint32_t column, const string &msg, bool isError)
+static inline bool IsAddSub(TokenType t)
 {
-    Diag d;
-
-    d.line      = line;
-    d.column    = column;
-    d.message   = msg;
-    d.isError   = isError;
-    diags.push_back(std::move(d));
+    return t == TOKEN_OP_PLUS || t == TOKEN_OP_MINUS;
 }
 
 /**
- * GAParser::PrintDiags - Print all Diags.
+ * IsMulDiv - Check if a token type is multiplication or division.
+ * 
+ * @param t     [in]    Token type to check.
+ * 
+ * @return      true if multiplication or division, false otherwise.
  */
 
-void GAParser::PrintDiags()
+static inline bool IsMulDiv(TokenType t)
 {
-    for (const Diag &d : diags)
-    {
-        printf("%s at %u:%u: %s\n", d.isError ? "error" : "warning", d.line, d.column, d.message.c_str());
-    }
+    return t == TOKEN_OP_STAR || t == TOKEN_OP_SLASH;
+}
+  
+/**
+ * IsIdentOrLiteral - Check if a token type is an identifier or literal.
+ * 
+ * @param t     [in]    Token type to check.
+ * 
+ * @return      true if identifier or literal, false otherwise.
+ */
+
+static inline bool IsIdentOrLiteral(TokenType t)
+{
+    return t == TOKEN_IDENTIFIER || t == TOKEN_INT_LITERAL || t == TOKEN_FLOAT_LITERAL;
 }
 
 /**
- * GAParser::HasErrors - Check if there are any error Diags.
+ * GAParser::ParseAssignment - Parse an assignment statement.
+ * 
+ * @param parent    [in/out]    Parent AST node to attach the assignment to.
  */
 
-bool GAParser::HasErrors()
+void GAParser::ParseAssignment(ASTNode &parent)
 {
-    for (const Diag &d : diags)
-        if (d.isError) return true;
-
-    return false;
-}
-
-/**
- * GAParser::PrintAST - Print an AST.
- */
-
-void GAParser::PrintAST() 
-{
-    struct StackItem
+    if (tokens[current + 1].type != TOKEN_OP_ASSIGN)
     {
-        ASTNode *node;
-        int depth;
-        bool isLast;
-    };
-
-    vector<StackItem> stack;
-
-    printf("%s\n", "PROG");
-
-    for (size_t i = 0; i < root.children.size(); ++i)
-    {
-        bool last = (i + 1 == root.children.size());
-        stack.push_back({ &root.children[i], 0, last });
+        assert(!"Expected '=' in assignment");
+        exit(1);
     }
 
-    while (!stack.empty())
+    ASTNode assign(NODE_ASSIGN, tokens[current + 1]);
+    ASTNode lhs(NODE_IDENT, tokens[current]);
+    assign.children.push_back(lhs);
+    current += 2;
+
+    if (current + 2 < tokens.size() &&
+        IsIdentOrLiteral(tokens[current].type) &&
+        tokens[current + 1].type == TOKEN_SEMICOLON)
     {
-        StackItem item = stack.back();
-        stack.pop_back();
+        NodeType type = tokens[current].type == TOKEN_IDENTIFIER ? NODE_IDENT : NODE_LIT;
 
-        for (int d = 0; d < item.depth; ++d)
-        {
-            if (d + 1 == item.depth)
-                printf("%s", item.isLast ? "`--" : "|--");
-            else
-                printf("|   ");
-        }
-
-        if (item.depth == 0)
-            printf("%s", item.isLast ? "`--" : "|--");
-
-        const char *label = "";
-        
-        switch (item.node->type)
-        {
-            case NODE_FUNC_DECL: 
-                
-                label = "FUNC";
-                break;
-            
-            case NODE_VAR_DECL:
-                label = "VAR"; 
-                break;
-            
-            case NODE_BLOCK:
-            
-                label = "BLOCK"; 
-                break;
-            
-            case NODE_EXPR: 
-            
-                label = "EXPR";
-                break;
-            
-            case NODE_IF: 
-                
-                label = "IF"; 
-                break;
-            
-            case NODE_FOR: 
-                
-                label = "FOR"; 
-                break;
-            
-            case NODE_RET:
-            
-                label = "RET"; 
-                break;
-            
-            case NODE_LIT:
-                
-                label = "LIT"; 
-                break;
-            
-            case NODE_UNOP:
-            
-                label = "UNOP"; 
-                break;
-
-            case NODE_BINOP: 
-                
-                label = "BINOP"; 
-                break;
-            
-            case NODE_CALL:
-            
-                label = "CALL"; 
-                break;
-
-            case NODE_IDX: 
-                
-                label = "IDX"; 
-                break;
-
-            case NODE_PROG: 
-            
-                label = "PROG"; 
-                break;
-
-            default: 
-
-                label = "NODE"; 
-                break;
-        }
-
-        if (item.node->text.empty())
-            printf("%s\n", label);
-        else
-            printf("%s(%s)\n", label, item.node->text.c_str());
-
-        for (int i = (int)item.node->children.size() - 1; i >= 0; --i)
-        {
-            bool childLast = (i == (int)item.node->children.size() - 1);
-            stack.push_back({ &item.node->children[i], item.depth + 1, childLast });
-        }
+        ASTNode rhs(type, tokens[current]);
+        assign.children.push_back(rhs);
+        current += 2;
     }
-}
-
-/**
- * GAParser::PrintSymbolTable - Print the symbol table.
- */
-
-void GAParser::PrintSymbolTable()
-{
-    printf("Symbol Table:\n");
-
-    for (size_t i = 0; i < symbolTable.size(); ++i)
+    else
     {
-        const Symbol &sym   = symbolTable[i];
-        const char *kindStr = "VAR";
-
-        if (sym.kind == SYM_PARAM)
-            kindStr = "PARAM";
-        
-        if (sym.kind == SYM_FUNC)
-            kindStr = "FUNC";
-
-        if (sym.kind == SYM_GLOBAL)
-            kindStr = "GLOBAL";
-
-        const char *typeStr = "UNKNOWN";
-
-        switch (sym.type)
-        {
-            case TYPE_INT:
-
-                typeStr = "INT";
-                break;
-
-            case TYPE_FLOAT32:
-
-                typeStr = "FLOAT32"; 
-                break;
-
-            case TYPE_FLOAT64:
-
-                typeStr = "FLOAT64"; 
-                break;
-
-            case TYPE_VOID:
-
-                typeStr = "VOID"; 
-                break;
-
-            case TYPE_CGAVEC:
-
-                typeStr = "CGAVEC"; 
-                break;
-
-            default:
-
-                typeStr = "UNKNOWN"; 
-                break;
-        }
-
-        printf("  %zu: %s (%s) : %s [scope=%u] at %u:%u\n", i, sym.name.c_str(), 
-            kindStr, typeStr, sym.scopeLevel, sym.declLine, sym.declCol);
+        ParseExpr(assign);
     }
-}
 
-/**
- * GAParser::GenerateAST - Generate the AST from the parsed tokens.
- */
 
-void GAParser::GenerateAST()
-{
-    while (current < tokens.size())
-    {
-        if (tokens[current].type == TOKEN_EOF)
-            break;
-
-        Token t = tokens[current];
-
-        if (t.type == TOKEN_KW_FOR)
-        {
-            ParseForLoop(root);
-            continue;
-        }
-
-        if (t.type == TOKEN_KW_CONST || t.type == TOKEN_KW_LET)
-        {
-            ParseVarDecl(root);
-            continue;
-        }
-
-        if (t.type == TOKEN_LBRACE)
-        {
-            ParseBlock(root);
-            continue;
-        }
-
-        Types tmpType;
-        bool isTypeTok = IsTypeToken(t, tmpType);
-
-        if (t.type == TOKEN_IDENTIFIER || isTypeTok)
-        {
-            bool isFunc = false;
-            bool isTypedDecl = false;
-
-            if (current + 1 < tokens.size())
-            {
-                if (tokens[current + 1].type == TOKEN_LPAREN)
-                    isFunc = true;
-                else if (tokens[current + 1].type == TOKEN_IDENTIFIER)
-                {
-                    if (current + 2 < tokens.size() && tokens[current + 2].type == TOKEN_LPAREN)
-                        isFunc = true;
-                    else
-                        isTypedDecl = true;
-                }
-            }
-
-            if (isTypedDecl)
-            {
-                ParseVarDecl(root);
-                continue;
-            }
-
-            if (isFunc)
-            {
-                ParseFuncDecl(root);
-                continue;
-            }
-
-            ParseExpression(root);
-            continue;
-        }
-
-        ++current;
-    }
+    parent.children.push_back(assign);
 }
 
 /**
@@ -533,83 +221,7 @@ void GAParser::GenerateAST()
 
 void GAParser::ParseFuncDecl(ASTNode &parent)
 {
-    if (current >= tokens.size())
-        return;
 
-    Types retType = TYPE_UNKNOWN;
-    bool hasRetType = false;
-
-    if (current + 2 < tokens.size())
-    {
-        Types tmp;
-
-        if (IsTypeToken(tokens[current], tmp) && tokens[current + 1].type == TOKEN_IDENTIFIER && 
-            tokens[current + 2].type == TOKEN_LPAREN)
-        {
-            hasRetType = true;
-            retType = tmp;
-        }
-    }
-
-    if (hasRetType || (current + 2 < tokens.size() &&
-        tokens[current].type == TOKEN_IDENTIFIER && 
-        tokens[current + 1].type == TOKEN_IDENTIFIER && 
-        tokens[current + 2].type == TOKEN_LPAREN))
-    {
-        Token name = tokens[current + (hasRetType ? 1 : 1)];
-
-        ASTNode fn(NODE_FUNC_DECL, name.line, name.column);
-        fn.text = name.text;
-        
-        if (hasRetType)
-            fn.declaredType = retType;
-
-        current += (hasRetType ? 2 : 2);
-        
-        if (tokens[current].type == TOKEN_LPAREN)
-            ++current;
-        
-        ParseParams(fn);
-        
-        if (current < tokens.size() && tokens[current].type == TOKEN_RPAREN)
-            ++current;
-        
-        if (current < tokens.size() && tokens[current].type == TOKEN_LBRACE)
-            ParseBlock(fn);
-        else if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-            ++current;
-        
-        parent.children.push_back(std::move(fn));
-        
-        return;
-    }
-
-    if (tokens[current].type == TOKEN_IDENTIFIER && 
-        current + 1 < tokens.size() && 
-        tokens[current + 1].type == TOKEN_LPAREN)
-    {
-        Token name = tokens[current];
-        ASTNode fn(NODE_FUNC_DECL, name.line, name.column);
-        fn.text = name.text;
-        ++current;
-
-        if (tokens[current].type == TOKEN_LPAREN)
-            ++current;
-
-        ParseParams(fn);
-
-        if (current < tokens.size() && tokens[current].type == TOKEN_RPAREN)
-            ++current;
-
-        if (current < tokens.size() && tokens[current].type == TOKEN_LBRACE)
-            ParseBlock(fn);
-        else if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-            ++current;
-
-        parent.children.push_back(std::move(fn));
-
-        return;
-    }
 }
 
 /**
@@ -620,103 +232,37 @@ void GAParser::ParseFuncDecl(ASTNode &parent)
 
 void GAParser::ParseVarDecl(ASTNode &parent)
 {
-    if (current >= tokens.size())
-        return;
+    TokenType type = tokens[current].type;
 
-    Types leadingType = TYPE_UNKNOWN;
-
-    if (tokens[current].type == TOKEN_KW_CONST || tokens[current].type == TOKEN_KW_LET)
+    if (type == TOKEN_KW_INT || type == TOKEN_KW_FLOAT || type == TOKEN_KW_CGAVEC) 
     {
-        ++current;
-    }
-        else if ((tokens[current].type == TOKEN_IDENTIFIER || tokens[current].type == TOKEN_KW_CGAVEC) &&
-                 current + 1 < tokens.size() &&
-                 tokens[current + 1].type == TOKEN_IDENTIFIER)
-    {
-        string tkn = tokens[current].text;
-
-        if (tkn == "int")
-            leadingType = TYPE_INT;
-        else if (tkn == "float32")
-            leadingType = TYPE_FLOAT32;
-        else if (tkn == "float64")
-            leadingType = TYPE_FLOAT64;
-        else if (tkn == "void")
-            leadingType = TYPE_VOID;
-        else if (tkn == "cgavec")
-            leadingType = TYPE_CGAVEC;
-
-        ++current;
-    }
-
-        if (leadingType == TYPE_UNKNOWN && current + 1 < tokens.size() &&
-            (tokens[current].type == TOKEN_IDENTIFIER || tokens[current].type == TOKEN_KW_CGAVEC) &&
-            tokens[current + 1].type == TOKEN_IDENTIFIER)
+        if (current + 1 < tokens.size() && tokens[current + 1].type == TOKEN_IDENTIFIER)
         {
-            string tkn2 = tokens[current].text;
-            
-            if (tkn2 == "int") 
-                leadingType = TYPE_INT;
-            else if (tkn2 == "float32") 
-                leadingType = TYPE_FLOAT32;
-            else if (tkn2 == "float64") 
-                leadingType = TYPE_FLOAT64;
-            else if (tkn2 == "void")
-                leadingType = TYPE_VOID;
-            else if (tkn2 == "cgavec") 
-                leadingType = TYPE_CGAVEC;
+            ASTNode varDecl(NODE_VAR_DECL, type, tokens[current + 1].text);
+            parent.children.push_back(varDecl);
 
-            ++current;
-        }
-
-    if (current >= tokens.size())
-        return;
-
-    Token name = tokens[current];
-    ASTNode vd(NODE_VAR_DECL, name.line, name.column);
-
-    if (name.type == TOKEN_IDENTIFIER)
-    {
-        vd.text = name.text;
-
-        if (leadingType != TYPE_UNKNOWN)
-            vd.declaredType = leadingType;
-
-        ++current;
-    }
-
-    if (current < tokens.size() && 
-        tokens[current].type == TOKEN_LBRACK)
-    {
-        ++current;
-
-        if (current < tokens.size())
-        {
-            Token idx = tokens[current];
-
-            if (idx.type == TOKEN_INT_LITERAL || idx.type == TOKEN_IDENTIFIER)
+            if (current + 2 < tokens.size())
             {
-                ASTNode lit(NODE_LIT, idx.line, idx.column);
-                lit.text = idx.text;
-                vd.children.push_back(std::move(lit));
-                ++current;
+                if (tokens[current + 2].type == TOKEN_SEMICOLON)
+                {
+                    current = current + 3;
+                    return;
+                }
+
+                if (tokens[current + 2].type == TOKEN_OP_ASSIGN)
+                {
+                    current = current + 1;
+                    ParseAssignment(parent);
+                    return;
+                }
             }
         }
-
-        if (current < tokens.size() && tokens[current].type == TOKEN_RBRACK)
-            ++current;
+        else
+        {
+            assert(!"Expected identifier after type in variable declaration");
+            return;
+        }
     }
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_OP_ASSIGN)
-    {
-        ++current;
-        ParseExpression(vd);
-    }
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-        ++current;
-
-    parent.children.push_back(std::move(vd));
 }
 
 /**
@@ -727,93 +273,7 @@ void GAParser::ParseVarDecl(ASTNode &parent)
 
 void GAParser::ParseBlock(ASTNode &parent)
 {
-    if (current >= tokens.size())
-        return;
-
-    Token lb = tokens[current];
-    ASTNode block(NODE_BLOCK, lb.line, lb.column);
-
-    if (tokens[current].type == TOKEN_LBRACE)
-        ++current;
-
-    while (current < tokens.size() && 
-        tokens[current].type != TOKEN_RBRACE && 
-        tokens[current].type != TOKEN_EOF)
-    {
-        Token t = tokens[current];
-        Types tmp;
-        bool isTypeTok = IsTypeToken(t, tmp);
-
-        if (t.type == TOKEN_KW_CONST || t.type == TOKEN_KW_LET || isTypeTok)
-        {
-            ParseVarDecl(block);
-            continue;
-        }
-
-        if (t.type == TOKEN_KW_FOR)
-        {
-            ParseForLoop(block);
-            continue;
-        }
-
-        if (t.type == TOKEN_IDENTIFIER)
-        {
-            ParseExpression(block);
-            continue;
-        }
-
-        ++current;
-    }
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_RBRACE)
-        ++current;
-
-    parent.children.push_back(std::move(block));
-}
-
-/**
- * GAParser::ParseBinaryOp - Parse a binary op.
- * 
- * @param parent    [in/out]    Parent AST node to attach the binary operation to.
- */
-
-void GAParser::ParseBinaryOp(ASTNode &parent)
-{
-    ParseExpression(parent);
-
-    if (current < tokens.size())
-    {
-        TokenType tt = tokens[current].type;
-        
-        if (tt == TOKEN_OP_PLUS || 
-            tt == TOKEN_OP_MINUS || 
-            tt == TOKEN_OP_STAR || 
-            tt == TOKEN_OP_SLASH)
-        {
-            Token op = tokens[current];
-            ++current;
-            ASTNode bin(NODE_BINOP, op.line, op.column);
-            bin.text = op.text;
-            
-            if (!parent.children.empty())
-            {
-                ASTNode lhs = std::move(parent.children.back());
-                parent.children.pop_back();
-                bin.children.push_back(std::move(lhs));
-            }
-            
-            ParseExpression(parent);
-            
-            if (!parent.children.empty())
-            {
-                ASTNode rhs = std::move(parent.children.back());
-                parent.children.pop_back();
-                bin.children.push_back(std::move(rhs));
-            }
-            
-            parent.children.push_back(std::move(bin));
-        }
-    }
+    
 }
 
 /**
@@ -822,95 +282,76 @@ void GAParser::ParseBinaryOp(ASTNode &parent)
  * @param parent    [in/out]    Parent AST node to attach the expression to.
  */
 
-void GAParser::ParseExpression(ASTNode &parent)
+void GAParser::ParseExpr(ASTNode &parent)
 {
-    if (current >= tokens.size())
-        return;
+    if (tokens[current].type == TOKEN_LPAREN)
+        current++;
 
-    Token t = tokens[current];
-
-    if (t.type == TOKEN_INT_LITERAL ||
-        t.type == TOKEN_FLOAT_LITERAL ||
-        t.type == TOKEN_STRING_LITERAL)
+    if (IsIdentOrLiteral(tokens[current].type))
     {
-        ASTNode lit(NODE_LIT, t.line, t.column);
-        lit.text = t.text;
-        ++current;
-        parent.children.push_back(std::move(lit));
-
-        if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-            ++current;
-            
-        return;
-    }
-
-    if (t.type == TOKEN_IDENTIFIER)
-    {
-        ASTNode id(NODE_EXPR, t.line, t.column);
-        id.text = t.text;
-        ++current;
-
-        if (current < tokens.size() &&
-            tokens[current].type == TOKEN_LPAREN)
+        if (current + 1 <= tokens.size() && tokens[current + 1].type == TOKEN_SEMICOLON)
         {
-            ++current;
-            ASTNode call(NODE_CALL, t.line, t.column);
-            call.text = id.text;
+            ASTNode ident(tokens[current].type == TOKEN_IDENTIFIER ? NODE_IDENT : NODE_LIT, 
+                tokens[current]);
             
-            while (current < tokens.size() && 
-                   tokens[current].type != TOKEN_RPAREN &&
-                   tokens[current].type != TOKEN_EOF)
-            {
-                ParseExpression(call);
-                if (current < tokens.size() && tokens[current].type == TOKEN_COMMA)
-                    ++current;
-            }
-
-            if (current < tokens.size() && tokens[current].type == TOKEN_RPAREN)
-                ++current;
-            
-            parent.children.push_back(std::move(call));
-            
-            if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-                ++current;
-            
-                return;
+            current += 2;
+            parent.children.push_back(ident);
+            return;
         }
 
-        if (current < tokens.size() && tokens[current].type == TOKEN_LBRACK)
+        if (IsAddSub(tokens[current + 1].type))
         {
-            ++current;
-            ASTNode idx(NODE_IDX, t.line, t.column);
-            idx.text = id.text;
-
-            ParseExpression(idx);
-            
-            if (current < tokens.size() && tokens[current].type == TOKEN_RBRACK)
-                ++current;
-            
-            parent.children.push_back(std::move(idx));
-            
-            if (current < tokens.size() && tokens[current].type == TOKEN_OP_ASSIGN)
-            {
-                ++current;
-                ParseExpression(parent);
-            }
-            
-            if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-                ++current;
-            
-                return;
+            ASTNode binop(NODE_BINOP, tokens[current + 1]);
+            ParseTerm(binop);
+            binop.text = tokens[current].text;
+            current++;
+            ParseExpr(binop);
         }
-
-        parent.children.push_back(std::move(id));
-        
-        if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-            ++current;
-        
-        return;
     }
+    else
+    {
+        assert(!"Unexpected non-literal/identifier encountered parsing expression");
+        exit(1);
+    }
+}
 
-    ++current;
+/**
+ * GAParser::ParseTerm - Parse a term in an expression.
+ * 
+ * @param parent    [in/out]    Parent AST node to attach the term to.
+ */
+
+void GAParser::ParseTerm(ASTNode &parent)
+{
+    if (tokens[current].type == TOKEN_LPAREN)
+        current++;
+
+    if (IsIdentOrLiteral(tokens[current].type))
+    { 
+        NodeType type = tokens[current].type == TOKEN_IDENTIFIER ? NODE_IDENT : NODE_LIT;
+        ASTNode lhs(type, tokens[current]);
+
+        if (IsMulDiv(tokens[current + 1].type))
+        {
+            ASTNode binop(NODE_BINOP, tokens[current + 1]);
+            binop.children.push_back(lhs);
+
+            binop.text  = tokens[current + 1].text;
+            current     = current + 2;
+            
+            ParseTerm(binop);
+            parent.children.push_back(binop);    
+            return;
+        }
+        else
+        {
+            parent.children.push_back(lhs);
+            current++;
+            return;
+        }
+        
+        current++;
+    }
 }
 
 /**
@@ -921,65 +362,7 @@ void GAParser::ParseExpression(ASTNode &parent)
 
 void GAParser::ParseForLoop(ASTNode &parent)
 {
-    if (current >= tokens.size())
-        return;
-
-    Token f = tokens[current];
-    ASTNode fl(NODE_FOR, f.line, f.column);
-    ++current;
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_LPAREN)
-        ++current;
-
-    if (current + 1 < tokens.size() && 
-        tokens[current].type == TOKEN_IDENTIFIER && 
-        tokens[current + 1].type == TOKEN_IDENTIFIER)
-    {
-        Token typeTok = tokens[current];
-        Token nameTok = tokens[current + 1];
-        ASTNode vd(NODE_VAR_DECL, nameTok.line, nameTok.column);
-
-        if (typeTok.text == "int")
-            vd.declaredType = TYPE_INT;
-        else if (typeTok.text == "float32")
-            vd.declaredType = TYPE_FLOAT32;
-        else if (typeTok.text == "float64")
-            vd.declaredType = TYPE_FLOAT64;
-        else if (typeTok.text == "void")
-            vd.declaredType = TYPE_VOID;
-        else if (typeTok.text == "cgavec")
-            vd.declaredType = TYPE_CGAVEC;
-
-        vd.text = nameTok.text;
-        current += 2;
-        
-        if (current < tokens.size() && tokens[current].type == TOKEN_OP_ASSIGN)
-        {
-            ++current;
-            ParseExpression(vd);
-        }
-
-        fl.children.push_back(std::move(vd));
-    }
-    else
-    {
-        ParseExpression(fl);
-    }
-
-    ParseExpression(fl);
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-        ++current;
     
-    ParseExpression(fl);
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_RPAREN)
-        ++current;
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_LBRACE)
-        ParseBlock(fl);
-
-    parent.children.push_back(std::move(fl));
 }
 
 /**
@@ -990,55 +373,7 @@ void GAParser::ParseForLoop(ASTNode &parent)
 
 void GAParser::ParseParams(ASTNode &parent)
 {
-    while (current < tokens.size() && 
-           tokens[current].type != TOKEN_RPAREN &&
-           tokens[current].type != TOKEN_EOF)
-    {
-        Token t = tokens[current];
     
-        if (t.type == TOKEN_IDENTIFIER)
-        {
-            Types leadingType = TYPE_UNKNOWN;
-
-            if (current + 1 < tokens.size() && tokens[current + 1].type == TOKEN_IDENTIFIER)
-            {
-                string tt = tokens[current].text;
-                
-                if (tt == "int")
-                    leadingType = TYPE_INT;
-                else if (tt == "float32")
-                    leadingType = TYPE_FLOAT32;
-                else if (tt == "float64")
-                    leadingType = TYPE_FLOAT64;
-                else if (tt == "void")
-                    leadingType = TYPE_VOID;
-                else if (tt == "cgavec")
-                    leadingType = TYPE_CGAVEC;
-                
-                ++current;
-            }
-
-            Token name = tokens[current];
-            ASTNode p(NODE_VAR_DECL, name.line, name.column);
-            p.text = name.text;
-            
-            if (leadingType != TYPE_UNKNOWN)
-                p.declaredType = leadingType;
-
-            parent.children.push_back(std::move(p));
-            ++current;
-            
-            continue;
-        }
-
-        if (t.type == TOKEN_COMMA)
-        {
-            ++current;
-            continue;
-        }
-
-        ++current;
-    }
 }
 
 /**
@@ -1049,34 +384,7 @@ void GAParser::ParseParams(ASTNode &parent)
 
 void GAParser::ParseCallExpr(ASTNode &parent)
 {
-    if (current >= tokens.size())
-        return;
-
-    Token id = tokens[current];
-    ASTNode call(NODE_CALL, id.line, id.column);
-    call.text = id.text;
-    ++current;
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_LPAREN)
-        ++current;
-    
-    while (current < tokens.size() && 
-           tokens[current].type != TOKEN_RPAREN &&
-           tokens[current].type != TOKEN_EOF)
-    {
-        ParseExpression(call);
-    
-        if (current < tokens.size() && tokens[current].type == TOKEN_COMMA)
-            ++current;
-    }
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_RPAREN)
-        ++current;
-
-    if (current < tokens.size() && tokens[current].type == TOKEN_SEMICOLON)
-        ++current;
-    
-    parent.children.push_back(std::move(call));
+   
 }
 
 /**
@@ -1085,395 +393,9 @@ void GAParser::ParseCallExpr(ASTNode &parent)
 
 void GAParser::BuildSymbolTable()
 {
-    symbolTable.clear();
-
-    Symbol ext1;
-    ext1.name           = "printf";
-    ext1.kind           = SYM_FUNC;
-    ext1.scopeLevel     = 0;
-    ext1.declaredType   = TYPE_INT;
-    ext1.type           = TYPE_INT;
-    ext1.declLine       = 0;
-    ext1.declCol        = 0;
-    ext1.paramCount     = -1;
-
-    symbolTable.push_back(ext1);
-
-    Symbol ext2;
-    ext2.name           = "cgarand";
-    ext2.kind           = SYM_FUNC;
-    ext2.scopeLevel     = 0;
-    ext2.declaredType   = TYPE_CGAVEC;
-    ext2.type           = TYPE_CGAVEC;
-    ext2.declLine       = 0;
-    ext2.declCol        = 0;
-    ext2.paramCount     = 0;
-
-    symbolTable.push_back(ext2);
-
-    uint32_t nextId = 1;
-    vector<vector<int>> stackPaths;
-    stackPaths.push_back(vector<int>());
-
-    while (!stackPaths.empty())
-    {
-        vector<int> path = stackPaths.back();
-        stackPaths.pop_back();
-
-        ASTNode &n = GetNodeByPath(path);
-        n.nodeId = nextId++;
-
-        for (int i = (int)n.children.size() - 1; i >= 0; --i)
-        {
-            vector<int> childPath = path;
-            childPath.push_back(i);
-            stackPaths.push_back(childPath);
-        }
-    }
-
-    for (size_t i = 0; i < root.children.size(); ++i)
-    {
-        const ASTNode &n = root.children[i];
-
-        if (n.type == NODE_FUNC_DECL)
-        {
-            Symbol f;
-
-            f.name          = n.text;
-            f.kind          = SYM_FUNC;
-            f.declaredType  = n.declaredType;
-
-            if (f.declaredType != TYPE_UNKNOWN)
-                f.type = f.declaredType;
-
-            f.scopeLevel    = 0;
-            f.declLine      = n.line;
-            f.declCol       = n.column;
-            f.astNodeIdx    = n.nodeId;
-
-            int pc = 0;
-            
-            for (const ASTNode &c : n.children)
-            {
-                if (c.type == NODE_VAR_DECL)
-                    ++pc;
-            }
-
-            f.paramCount = pc;
-            f.astNodeIdx = n.nodeId;
-
-            for (const ASTNode &c : n.children)
-            {
-                if (c.type == NODE_VAR_DECL)
-                {
-                    f.paramTypes.push_back(c.declaredType);
-                }
-            }
-            symbolTable.push_back(f);
-        }
-
-        if (n.type == NODE_VAR_DECL)
-        {
-            Symbol g;
-            g.name           = n.text;
-            g.kind           = SYM_GLOBAL;
-            g.declaredType   = n.declaredType;
-
-            if (g.declaredType != TYPE_UNKNOWN)
-                g.type = g.declaredType;
-            
-            g.scopeLevel     = 0;
-            g.declLine       = n.line;
-            g.declCol        = n.column;
-            g.astNodeIdx     = n.nodeId;
-
-            symbolTable.push_back(g);
-        }
-
-        if ((n.type == NODE_IDX || n.type == NODE_EXPR) && !n.text.empty())
-        {
-            bool found = false;
-            for (size_t si = 0; si < symbolTable.size(); ++si)
-            {
-                if (symbolTable[si].name == n.text)
-                {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found)
-            {
-                Symbol g2;
-                g2.name           = n.text;
-                g2.kind           = SYM_GLOBAL;
-                g2.declaredType   = n.declaredType;
-
-                if (g2.declaredType != TYPE_UNKNOWN)
-                    g2.type = g2.declaredType;
-                
-                g2.scopeLevel     = 0;
-                g2.declLine       = n.line;
-                g2.declCol        = n.column;
-                g2.astNodeIdx     = n.nodeId;
-
-                symbolTable.push_back(g2);
-            }
-        }
-    }
-
-    for (size_t fi = 0; fi < root.children.size(); ++fi)
-    {
-        const ASTNode &fn = root.children[fi];
-        if (fn.type != NODE_FUNC_DECL)
-            continue;
-
-        for (size_t ci = 0; ci < fn.children.size(); ++ci)
-        {
-            const ASTNode &c = fn.children[ci];
-
-            if (c.type == NODE_VAR_DECL)
-            {
-                Symbol p;
-                p.name           = c.text;
-                p.kind           = SYM_PARAM;
-                p.declaredType   = c.declaredType;
-
-                if (p.declaredType != TYPE_UNKNOWN)
-                    p.type = p.declaredType;
-
-                p.scopeLevel     = 1;
-                p.declLine       = c.line;
-                p.declCol        = c.column;
-                p.astNodeIdx     = c.nodeId;
-
-                if (!c.children.empty() && c.children.size() == 1)
-                {
-                    const ASTNode &pc0 = c.children[0];
-
-                    if (pc0.type == NODE_LIT)
-                    {
-                        errno           = 0;
-                        char *endptr    = nullptr;
-                        unsigned long v = strtoul(pc0.text.c_str(), &endptr, 10);
-
-                        if (endptr != pc0.text.c_str() && *endptr == '\0' && errno == 0)
-                            p.arraySize = (uint32_t)v;
-                        else
-                            p.arraySize = 0;
-                    }
-                    else if ((pc0.type == NODE_EXPR || pc0.type == NODE_IDX) && !pc0.text.empty())
-                    {
-                        bool foundSym = false;
-                        
-                        for (const Symbol &ss : symbolTable)
-                        {
-                            if (ss.name == pc0.text)
-                            {
-                                foundSym = true;
-
-                                if (ss.arraySize > 0)
-                                    p.arraySize = ss.arraySize;
-                                else
-                                    PushDiag(c.line, c.column, string("array-size identifier '") + \
-                                    pc0.text + " is not a compile-time size", true);
-                                break;
-                            }
-                        }
-
-                        if (!foundSym)
-                        {
-                            PushDiag(c.line, c.column, string("array-size identifier '") + pc0.text + " not found", true);
-                        }
-                    }
-                }
-
-                symbolTable.push_back(p);
-                continue;
-            }
-
-            vector<vector<int>> stack;
-            vector<unsigned> stackLevel;
-            vector<int> startPath;
-            startPath.push_back((int)fi);
-            startPath.push_back((int)ci);
-            stack.push_back(startPath);
-            stackLevel.push_back(2);
-
-            while (!stack.empty())
-            {
-                vector<int> path = stack.back();
-                stack.pop_back();
-                unsigned level = stackLevel.back();
-                stackLevel.pop_back();
-
-                ASTNode &node = GetNodeByPath(path);
-
-                if (node.type == NODE_VAR_DECL)
-                {
-                    Symbol s;
-                    s.name          = node.text;
-                    s.kind          = (level == 0) ? SYM_GLOBAL : SYM_VAR;
-                    s.declaredType  = node.declaredType;
-
-                    if (s.declaredType != TYPE_UNKNOWN)
-                        s.type = s.declaredType;
-                    
-                    s.scopeLevel    = level;
-                    s.declLine      = node.line;
-                    s.declCol       = node.column;
-                    s.astNodeIdx    = node.nodeId;
-
-                    if (!node.children.empty() && node.children.size() == 1)
-                    {
-                        const ASTNode &lc0 = node.children[0];
-
-                        if (lc0.type == NODE_LIT)
-                        {
-                            errno           = 0;
-                            char *endptr    = nullptr;
-                            unsigned long v = strtoul(lc0.text.c_str(), &endptr, 10);
-
-                            if (endptr != lc0.text.c_str() && *endptr == '\0' && errno == 0)
-                                s.arraySize = (uint32_t)v;
-                            else
-                                s.arraySize = 0;
-                        }
-                        else if ((lc0.type == NODE_EXPR || lc0.type == NODE_IDX) && !lc0.text.empty())
-                        {
-                            bool foundSym = false;
-
-                            for (const Symbol &ss : symbolTable)
-                            {
-                                if (ss.name == lc0.text)
-                                {
-                                    foundSym = true;
-
-                                    if (ss.arraySize > 0)
-                                        s.arraySize = ss.arraySize;
-                                    else
-                                        PushDiag(node.line, node.column, string("array-size identifier '") + \
-                                        lc0.text + " is not a compile-time size", true);
-                                    break;
-                                }
-                            }
-
-                            if (!foundSym)
-                            {
-                                PushDiag(node.line, node.column, string("array-size identifier '") + lc0.text + \
-                                " not found", true);
-                            }
-                        }
-                    }
-
-                    symbolTable.push_back(s);
-
-                    continue;
-                }
-
-                unsigned nextLevel = level;
-
-                if (node.type == NODE_BLOCK && nextLevel < 2u)
-                    nextLevel = 2u;
-
-                for (int i = (int)node.children.size() - 1; i >= 0; --i)
-                {
-                    vector<int> childPath = path;
-                    childPath.push_back(i);
-                    stack.push_back(childPath);
-                    stackLevel.push_back(nextLevel);
-                }
-            }
-        }
-    }
-
-    vector<vector<int>> todo;
-    todo.push_back(vector<int>());
-
-    while (!todo.empty())
-    {
-        vector<int> path = todo.back();
-        todo.pop_back();
-
-        ASTNode &n = GetNodeByPath(path);
-
-        if ((n.type == NODE_IDX || n.type == NODE_EXPR) && !n.text.empty())
-        {
-            bool found = false;
-
-            for (size_t si = 0; si < symbolTable.size(); ++si)
-            {
-                if (symbolTable[si].name == n.text)
-                {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found)
-            {
-                Symbol g3;
-                g3.name          = n.text;
-                g3.kind          = SYM_GLOBAL;
-                g3.declaredType  = n.declaredType;
-
-                if (g3.declaredType != TYPE_UNKNOWN)
-                    g3.type = g3.declaredType;
-
-                g3.scopeLevel    = 0;
-                g3.declLine      = n.line;
-                g3.declCol       = n.column;
-                g3.astNodeIdx    = n.nodeId;
-
-                symbolTable.push_back(g3);
-            }
-        }
-
-        for (int i = (int)n.children.size() - 1; i >= 0; --i)
-        {
-            vector<int> childPath = path;
-            childPath.push_back(i);
-            todo.push_back(childPath);
-        }
-    }
+   
 }
-/**
- * TypeToString - Convert a type enum to a string.
- * 
- * @param t     [in]    Type to convert.
- * 
- * @return      String representation of the type.
- */
 
-static const char *TypeToString(Types t)
-{
-    switch (t)
-    {
-        case TYPE_INT: 
-        
-            return "INT";
-        
-        case TYPE_FLOAT32: 
-        
-            return "FLOAT32";
-        
-        case TYPE_FLOAT64:
-        
-            return "FLOAT64";
-        
-        case TYPE_VOID:
-        
-            return "VOID";
-        
-        case TYPE_CGAVEC:
-        
-            return "CGAVEC";
-        
-        default: 
-        
-            return "UNKNOWN";
-    }
-}
 
 /**
  * IsNumber - Check if a type is numeric (int or float).
@@ -1483,26 +405,17 @@ static const char *TypeToString(Types t)
  * @return      true if numeric, false otherwise.
  */
 
-static bool IsNumeric(Types t)
+static bool IsNumeric(Type t)
 {
-    return t == TYPE_INT || t == TYPE_FLOAT32 || t == TYPE_FLOAT64;
+    return t == TYPE_INT || t == TYPE_FLOAT;
 }
 
 /**
  * PromoteNumberic - Promote two numeric types to a common type.
  */
 
-static Types PromoteNumeric(Types a, Types b)
+static Type PromoteNumeric(Type a, Type b)
 {
-    if (a == TYPE_FLOAT64 || b == TYPE_FLOAT64) 
-        return TYPE_FLOAT64;
-    
-    if (a == TYPE_FLOAT32 || b == TYPE_FLOAT32) 
-        return TYPE_FLOAT32;
-    
-    if (a == TYPE_INT && b == TYPE_INT) 
-        return TYPE_INT;
-
     return TYPE_UNKNOWN;
 }
 
@@ -1514,723 +427,5 @@ static Types PromoteNumeric(Types a, Types b)
 
 void GAParser::InferTypes()
 {
-    const int maxIter = 8;
-
-    for (int iter = 0; iter < maxIter; ++iter)
-    {
-        bool changed = false;
-
-        struct Frame { vector<int> path; bool entered; };
-        vector<Frame> stack;
-        stack.push_back(Frame());
-        stack.back().path.clear();
-        stack.back().entered = false;
-
-        while (!stack.empty())
-        {
-            Frame fr = stack.back();
-            stack.pop_back();
-
-            ASTNode &node = GetNodeByPath(fr.path);
-
-            if (!fr.entered)
-            {
-                fr.entered = true;
-                stack.push_back(fr);
-
-                for (int i = (int)node.children.size() - 1; i >= 0; --i)
-                {
-                    Frame child;
-                    child.path = fr.path;
-                    child.path.push_back(i);
-                    child.entered = false;
-                    stack.push_back(child);
-                }
-
-                continue;
-            }
-
-            switch (node.type)
-            {
-                case NODE_LIT:
-                {
-                    if (!node.text.empty() && node.text.find('.') != string::npos)
-                        node.inferredType = TYPE_FLOAT32;
-                    else
-                        node.inferredType = TYPE_INT;
-                    break;
-                }
-
-                case NODE_EXPR:
-                {
-                    if (node.symbolId >= 0 && node.symbolId < (int)symbolTable.size())
-                        node.inferredType = symbolTable[node.symbolId].type;
-                    break;
-                }
-
-                case NODE_IDX:
-                {
-                    if (node.symbolId >= 0 && node.symbolId < (int)symbolTable.size())
-                    {
-                        Types container = symbolTable[node.symbolId].type;
-                        if (container == TYPE_CGAVEC)
-                            node.inferredType = TYPE_CGAVEC;
-                        else
-                            node.inferredType = TYPE_UNKNOWN;
-                    }
-                    break;
-                }
-
-                case NODE_CALL:
-                {
-                    if (node.symbolId >= 0 && node.symbolId < (int)symbolTable.size())
-                    {
-                        Symbol &sym = symbolTable[node.symbolId];
-                        node.inferredType = sym.type;
-
-                        int provided = 0;
-                        for (const ASTNode &c : node.children)
-                            ++provided;
-
-                        if (sym.paramCount >= 0 && sym.paramCount != 0 && sym.paramCount != provided)
-                        {
-                            PushDiag(node.line, node.column,
-                                string("call to '") + sym.name + "' expected " +
-                                to_string(sym.paramCount) + " args but got " + to_string(provided),
-                                true
-                            );
-                        }
-                    }
-                    break;
-                }
-
-                case NODE_BINOP:
-                {
-                    if (node.children.size() >= 2)
-                    {
-                        Types L = node.children[0].inferredType;
-                        Types R = node.children[1].inferredType;
-
-                        if (IsNumeric(L) && IsNumeric(R))
-                            node.inferredType = PromoteNumeric(L, R);
-                        else if (L == TYPE_CGAVEC && R == TYPE_CGAVEC)
-                            node.inferredType = TYPE_CGAVEC;
-                        else
-                            node.inferredType = TYPE_UNKNOWN;
-                    }
-                    break;
-                }
-
-                case NODE_VAR_DECL:
-                {
-                    bool hasInit = false;
-                    Types init = TYPE_UNKNOWN;
-
-                    std::function<bool(const string &)> isNumericLiteralString = [&](const string &s) -> bool
-                    {
-                        if (s.empty())
-                            return false;
-
-                        size_t i = 0;
-
-                        if (s[0] == '+' || s[0] == '-')
-                            i = 1;
-
-                        bool seenDigit = false;
-
-                        for (; i < s.size(); ++i)
-                        {
-                            if (isdigit((unsigned char)s[i]))
-                            {
-                                seenDigit = true;
-                                continue;
-                            }
-
-                            if (s[i] == '.')
-                                continue;
-
-                            return false;
-                        }
-
-                        return seenDigit;
-                    };
-
-                    if (!node.children.empty())
-                    {
-                        if (node.children.size() >= 2)
-                        {
-                            hasInit = true;
-                            init = node.children.back().inferredType;
-                        }
-                        else
-                        {
-                            const ASTNode &c0 = node.children[0];
-
-                            if (c0.type == NODE_LIT && !isNumericLiteralString(c0.text))
-                            {
-                                hasInit = false;
-                            }
-                            else
-                            {
-                                hasInit = true;
-                                init = c0.inferredType;
-                            }
-                        }
-                    }
-
-                    if (hasInit)
-                    {
-                        if (node.declaredType != TYPE_UNKNOWN)
-                        {
-                            if (!(IsNumeric(init) && IsNumeric(node.declaredType)) && init != node.declaredType)
-                            {
-                                PushDiag(node.line, node.column,
-                                    string("initializer type '") + TypeToString(init) +
-                                    "' does not match declared type '" + TypeToString(node.declaredType) + "' for '" +
-                                    node.text + "'",
-                                    true
-                                );
-                            }
-
-                            for (Symbol &s : symbolTable)
-                            {
-                                if (s.astNodeIdx == node.nodeId)
-                                {
-                                    if (s.type != node.declaredType)
-                                    {
-                                        s.type = node.declaredType;
-                                        changed = true;
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            for (Symbol &s : symbolTable)
-                            {
-                                if (s.astNodeIdx == node.nodeId)
-                                {
-                                    if (s.type != init)
-                                    {
-                                        s.type = init;
-                                        changed = true;
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    break;
-                }
-
-                case NODE_RET:
-                {
-                    if (!node.children.empty())
-                    {
-                        Types rt            = node.children[0].inferredType;
-                        node.inferredType   = rt;
-
-                        vector<int> path;
-
-                        struct SFrame 
-                        { 
-                            vector<int> p;
-                        };
-
-                        vector<SFrame> sstack;
-                        sstack.push_back(SFrame());
-                        bool foundFunc = false;
-                        uint32_t funcNodeId = 0;
-
-                        while (!sstack.empty() && !foundFunc)
-                        {
-                            SFrame cur = sstack.back();
-                            sstack.pop_back();
-                            ASTNode &ncur = GetNodeByPath(cur.p);
-                            
-                            if (ncur.nodeId == node.nodeId)
-                            {
-                                vector<int> up = cur.p;
-                                while (!up.empty())
-                                {
-                                    ASTNode &maybe = GetNodeByPath(up);
-                                    if (maybe.type == NODE_FUNC_DECL)
-                                    {
-                                        funcNodeId = maybe.nodeId;
-                                        foundFunc = true;
-                                        break;
-                                    }
-                                    up.pop_back();
-                                }
-                                break;
-                            }
-
-                            for (int i = (int)ncur.children.size() - 1; i >= 0; --i)
-                            {
-                                SFrame nf;
-                                nf.p = cur.p;
-                                nf.p.push_back(i);
-                                sstack.push_back(nf);
-                            }
-                        }
-
-                        if (foundFunc)
-                        {
-                            for (Symbol &s : symbolTable)
-                            {
-                                if (s.kind == SYM_FUNC && s.astNodeIdx == funcNodeId)
-                                {
-                                    if (s.declaredType == TYPE_UNKNOWN)
-                                    {
-                                        if (s.type != rt)
-                                        {
-                                            s.type = rt;
-                                            changed = true;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        if (!(IsNumeric(rt) && IsNumeric(s.declaredType)) && rt != s.declaredType)
-                                        {
-                                            PushDiag(node.line, node.column, string("return type '") +
-                                                TypeToString(rt) + "' does not match function declared type '" +
-                                                TypeToString(s.declaredType) + "'",
-                                                true
-                                            );
-                                        }
-                                    }
-
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    break;
-                }
-
-                default:
-                    break;
-            }
-        }
-
-        if (!changed)
-            break;
-    }
-}
-
-/**
- * GAParser::ComputeLoweredTypes - Compute the lowered types for all symbols
- * in the symbol table.
- */
-
-void GAParser::ComputeLoweredTypes()
-{
-    for (Symbol &s : symbolTable)
-    {
-        string tstr;
-        switch (s.type)
-        {
-            case TYPE_INT:
-
-                tstr = "i32";
-                break;
-
-            case TYPE_FLOAT32: 
-
-                tstr = "f32";
-                break;
-            
-            case TYPE_FLOAT64: 
-            
-                tstr = "f64";
-                break;
-            
-            case TYPE_VOID: 
-            
-                tstr = "()";
-                break;
-            
-            case TYPE_CGAVEC:
-
-                if (s.arraySize > 0)
-                    tstr = string("memref[") + to_string(s.arraySize) + string(" x 32 x f32]");
-                else
-                    tstr = string("memref<32 x f32>");
-                break;
-            
-            default:
-
-                tstr = "<?>"; 
-                break;
-        }
-
-        if ((s.kind == SYM_VAR || s.kind == SYM_GLOBAL || s.kind == SYM_PARAM) && s.isAddressable)
-        {
-            if (tstr.rfind("memref", 0) != 0)
-            {
-                if (s.arraySize > 0)
-                    tstr = string("memref[") + to_string(s.arraySize) + string(" x ") + tstr + string("]");
-                else
-                    tstr = string("memref<? x ") + tstr + string(">");
-            }
-        }
-
-        s.loweredType = tstr;
-    }
-}
-
-/**
- * GAParser::LowerToMLIR - Lower the AST to MLIR and print it to stdout.
- * 
- * @param ctx   [in]    MLIR context to use.
- */
-
-void GAParser::LowerToMLIR(MLIRContext &ctx)
-{
-    OpBuilder builder(&ctx);
-    ModuleOp module = ModuleOp::create(builder.getUnknownLoc());
-
-    for (const Symbol &s : symbolTable)
-    {
-        if (s.kind != SYM_FUNC)
-            continue;
-
-        SmallVector<Type, 4> inputs;
-        SmallVector<Type, 1> results;
-
-        for (Types pt : s.paramTypes)
-        {
-            Type et;
-
-            switch (pt)
-            {
-                case TYPE_INT: 
-                    
-                    et = builder.getIntegerType(32);
-                    break;
-
-                case TYPE_FLOAT32: 
-                
-                    et = builder.getF32Type(); 
-                    break;
-
-                case TYPE_FLOAT64: 
-
-                    et = builder.getF64Type(); 
-                    break;
-
-                case TYPE_CGAVEC:         
-                {
-                    SmallVector<int64_t, 1> shape;
-                    shape.push_back(32);
-                    et = MemRefType::get(shape, builder.getF32Type());
-                }
-
-                break;
-
-                default: 
-
-                    et = builder.getF32Type(); 
-                    break;
-            }
-
-            inputs.push_back(et);
-        }
-
-        if (s.type != TYPE_UNKNOWN && s.type != TYPE_VOID)
-        {
-            Type et;
-
-            switch (s.type)
-            {
-                case TYPE_INT:
-                
-                    et = builder.getIntegerType(32);
-                    break;
-                    
-                case TYPE_FLOAT32:
-
-                    et = builder.getF32Type(); 
-                    break;
-
-                case TYPE_FLOAT64:
-
-                    et = builder.getF64Type(); 
-                    break;
-
-                case TYPE_CGAVEC: 
-                {
-                    SmallVector<int64_t, 1> shape;
-                    shape.push_back(32);
-                    et = MemRefType::get(shape, builder.getF32Type());
-                }
-
-                break;
-                
-                default: 
-
-                    et = builder.getF32Type(); 
-                    break;
-            }
-
-            results.push_back(et);
-        }
-
-        FunctionType funcType   = FunctionType::get(&ctx, inputs, results);
-        func::FuncOp func       = func::FuncOp::create(builder.getUnknownLoc(), s.name, funcType);
-
-        vector<int> foundPath;
-        vector<vector<int>> search;
-        search.push_back(vector<int>());
-
-        while (!search.empty())
-        {
-            vector<int> path = std::move(search.back());
-            search.pop_back();
-
-            ASTNode &n = GetNodeByPath(path);
-
-            if ((uint32_t)n.nodeId == s.astNodeIdx)
-            {
-                foundPath = path;
-                break;
-            }
-
-            for (int i = (int)n.children.size() - 1; i >= 0; --i)
-            {
-                vector<int> childPath = path;
-                childPath.push_back(i);
-                search.push_back(std::move(childPath));
-            }
-        }
-
-        vector<uint32_t> ids;
-        
-        if (foundPath.empty())
-        {
-            module.push_back(func);
-            continue;
-        }
-
-        func.addEntryBlock();
-        OpBuilder fbuilder(&ctx);
-        fbuilder.setInsertionPointToStart(&func.getBody().front());
-
-        if (!foundPath.empty())
-        {
-            vector<vector<int>> collectStack;
-            collectStack.push_back(foundPath);
-
-            while (!collectStack.empty())
-            {
-                vector<int> p = std::move(collectStack.back());
-                collectStack.pop_back();
-
-                ASTNode &cn = GetNodeByPath(p);
-                ids.push_back(cn.nodeId);
-
-                for (int i = (int)cn.children.size() - 1; i >= 0; --i)
-                {
-                    vector<int> cp = p;
-                    cp.push_back(i);
-                    collectStack.push_back(std::move(cp));
-                }
-            }
-        }
-
-        for (const Symbol &sym : symbolTable)
-        {
-            if (sym.astNodeIdx == 0)
-                continue;
-
-            if (!ids.empty() && find(ids.begin(), ids.end(), sym.astNodeIdx) == ids.end())
-                continue;
-
-            if (sym.kind == SYM_VAR || sym.kind == SYM_PARAM)
-            {
-                bool shouldAlloc = (sym.arraySize > 0) || (sym.type == TYPE_CGAVEC);
-
-                if (!shouldAlloc)
-                    continue;
-
-                Type elemType;
-
-                switch (sym.type)
-                {
-                    case TYPE_INT:
-                        
-                        elemType = builder.getIntegerType(32);
-                        break;
-
-                    case TYPE_FLOAT32: 
-                    
-                        elemType = builder.getF32Type();
-                        break;
-                    
-                    case TYPE_FLOAT64: 
-
-                        elemType = builder.getF64Type();
-                        break;
-
-                    case TYPE_CGAVEC: 
-
-                        elemType = builder.getF32Type();
-                        break;
-
-                    default: 
-
-                        elemType = builder.getF32Type();
-                        break;
-                }
-
-                SmallVector<int64_t, 4> shape;
-
-                if (sym.type == TYPE_CGAVEC)
-                {
-                    if (sym.arraySize > 0)
-                        shape.push_back((int64_t)sym.arraySize);
-
-                    shape.push_back(32);
-                }
-                else
-                {
-                    if (sym.arraySize > 0)
-                        shape.push_back((int64_t)sym.arraySize);
-                }
-
-                if (!shape.empty())
-                {
-                    mlir::MemRefType mrType = MemRefType::get(shape, elemType);
-                    fbuilder.create<memref::AllocOp>(fbuilder.getUnknownLoc(), mrType);
-                }
-            }
-        }
-
-        for (uint32_t nid : ids)
-        {
-            vector<vector<int>> searchPaths;
-            searchPaths.push_back(foundPath);
-
-            while (!searchPaths.empty())
-            {
-                vector<int> p = std::move(searchPaths.back());
-                searchPaths.pop_back();
-
-                ASTNode &cn = GetNodeByPath(p);
-                
-                if (cn.nodeId == nid && cn.type == NODE_FOR)
-                {
-                        llvm::outs() << "[debug] encountered NODE_FOR id=" << cn.nodeId << "\n";
-                    if (cn.children.size() >= 4)
-                    {
-                        ASTNode &init = cn.children[0];
-                        ASTNode &cond = cn.children[1];
-                        ASTNode &incr = cn.children[2];
-                        ASTNode &body = cn.children[3];
-
-                        int64_t ub = -1;
-
-                        if (!cond.children.empty())
-                        {
-                            ASTNode &rhs = cond.children.back();
-
-                            if (rhs.type == NODE_LIT)
-                            {
-                                ub = strtoll(rhs.text.c_str(), nullptr, 10);
-                            }
-                            else if (rhs.type == NODE_EXPR && !rhs.text.empty())
-                            {
-                                for (const Symbol &ss : symbolTable)
-                                {
-                                    if (ss.name == rhs.text && ss.arraySize > 0)
-                                    {
-                                        ub = (int64_t)ss.arraySize;
-                                        break;
-                                    }
-                                }
-
-                                if (ub <= 0)
-                                {
-                                    for (const Symbol &ss : symbolTable)
-                                    {
-                                        if (ss.name != rhs.text)
-                                            continue;
-
-                                        if (ss.astNodeIdx == 0)
-                                            continue;
-
-                                        vector<vector<int>> pfsearch;
-                                        pfsearch.push_back(foundPath);
-
-                                        while (!pfsearch.empty())
-                                        {
-                                            vector<int> p = std::move(pfsearch.back());
-                                            pfsearch.pop_back();
-
-                                            ASTNode &maybe = GetNodeByPath(p);
-
-                                            if ((uint32_t)maybe.nodeId == ss.astNodeIdx)
-                                            {
-                                                if (!maybe.children.empty())
-                                                {
-                                                    ASTNode &init = maybe.children.back();
-                                                    if (init.type == NODE_LIT)
-                                                    {
-                                                        ub = strtoll(init.text.c_str(), nullptr, 10);
-                                                    }
-                                                }
-
-                                                break;
-                                            }
-
-                                            for (int j = (int)maybe.children.size() - 1; j >= 0; --j)
-                                            {
-                                                vector<int> cp = p;
-                                                cp.push_back(j);
-                                                pfsearch.push_back(std::move(cp));
-                                            }
-                                        }
-
-                                        if (ub > 0)
-                                            break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (ub <= 0)
-                            continue;
-
-                        arith::ConstantIndexOp lbOp     = fbuilder.create<arith::ConstantIndexOp>(fbuilder.getUnknownLoc(), 0);
-                        arith::ConstantIndexOp ubOp     = fbuilder.create<arith::ConstantIndexOp>(fbuilder.getUnknownLoc(), ub);
-                        arith::ConstantIndexOp stepOp   = fbuilder.create<arith::ConstantIndexOp>(fbuilder.getUnknownLoc(), 1);
-
-                        SmallVector<Value, 4> iterArgs;
-                        scf::ForOp forOp = fbuilder.create<scf::ForOp>(fbuilder.getUnknownLoc(), lbOp.getResult(), ubOp.getResult(), stepOp.getResult(), iterArgs);
-
-                        Block &loopBody = forOp.getOperation()->getRegion(0).front();
-                        OpBuilder lbuilder(&ctx);
-                        lbuilder.setInsertionPointToStart(&loopBody);
-
-                        lbuilder.create<func::CallOp>(fbuilder.getUnknownLoc(), "cgarand", TypeRange(), ValueRange());
-                        lbuilder.create<scf::YieldOp>(fbuilder.getUnknownLoc());
-                    }
-                }
-
-                for (int i = (int)cn.children.size() - 1; i >= 0; --i)
-                {
-                    vector<int> cp = p;
-                    cp.push_back(i);
-                    searchPaths.push_back(std::move(cp));
-                }
-            }
-        }
-
-        fbuilder.create<func::ReturnOp>(fbuilder.getUnknownLoc());
-        module.push_back(func);
-    }
-
-    module.print(llvm::outs());
-    llvm::outs() << "\n";
+   
 }

@@ -4,8 +4,6 @@
 #include "lexer.h"
 
 using namespace std;
-using namespace mlir;
-using namespace llvm;
 
 enum NodeType
 {
@@ -14,6 +12,7 @@ enum NodeType
     NODE_VAR_DECL,
     NODE_BLOCK,
     NODE_EXPR,
+    NODE_ASSIGN,
     NODE_IF,
     NODE_FOR,
     NODE_RET,
@@ -21,16 +20,16 @@ enum NodeType
     NODE_UNOP,
     NODE_BINOP,
     NODE_CALL,
-    NODE_IDX
+    NODE_IDX,
+    NODE_IDENT
 };
 
-enum Types
+enum Type
 {
     TYPE_INT,
-    TYPE_FLOAT32,
-    TYPE_FLOAT64,
-    TYPE_VOID,
+    TYPE_FLOAT,
     TYPE_CGAVEC,
+    TYPE_VOID,
     TYPE_UNKNOWN
 };
 
@@ -44,59 +43,65 @@ enum SymbolKind
 
 struct Symbol 
 {
-    string name;
-    SymbolKind kind;
-    Types type            = TYPE_UNKNOWN;
-    Types declaredType    = TYPE_UNKNOWN;
-    uint32_t astNodeIdx   = 0;
-    uint32_t scopeLevel   = 0;
-    uint32_t declLine     = 0;
-    uint32_t declCol      = 0;
-    int32_t paramCount    = 0;
 
-    vector<Types> paramTypes;
-
-    bool isAddressable    = false;
-    bool isConst          = false;
-    bool declaredOnly     = false;
-    uint32_t arraySize    = 0;
-
-    string loweredType;
 };
 
 struct ASTNode
 {
-    NodeType type;
-    uint32_t line;
-    uint32_t column;
+    NodeType nodeType;
+    uint32_t l;
+    uint32_t c;
     uint32_t nodeId = 0;
-
     string text;
-    TokenType tokenType;
-
+    Type type;
+    
     vector<ASTNode> children;
 
-    int32_t symbolId    = -1;
-    Types declaredType  = TYPE_UNKNOWN;
-    Types inferredType  = TYPE_UNKNOWN;
+    ASTNode() : nodeType(NODE_PROG), l(0), c(0) {}
 
-    ASTNode() : type(NODE_PROG), line(0), column(0), tokenType(TOKEN_UNKNOWN) {}
-    ASTNode(NodeType t, uint32_t l, uint32_t c) : type(t), line(l), column(c), tokenType(TOKEN_UNKNOWN) {}
-};
+    ASTNode(NodeType t, Token &token) : 
+        nodeType(t),
+        l(token.line), 
+        c(token.column), 
+        text(token.text)
+    {
+    }
 
-struct Diag
-{
-    uint32_t line;
-    uint32_t column;
-    string message;
-    bool isError;
+    ASTNode(NodeType t, TokenType typeIn, string &txt) : 
+        nodeType(t), 
+        l(0), 
+        c(0), 
+        text(txt) 
+    {
+        switch (typeIn)
+        {
+            case TOKEN_KW_INT:
+
+                type = TYPE_INT;
+                break;
+
+            case TOKEN_KW_FLOAT:
+
+                type = TYPE_FLOAT;
+                break;
+
+            case TOKEN_KW_CGAVEC:
+
+                type = TYPE_CGAVEC;
+                break;
+
+            default:
+
+                type = TYPE_UNKNOWN;
+                break;
+        }
+    }
 };
 
 struct GAParser
 {
     vector<Token> tokens;
     vector<Symbol> symbolTable;
-    vector<Diag> diags;
 
     size_t current;
     ASTNode root;
@@ -110,20 +115,16 @@ struct GAParser
     void GenerateAST();
     void BuildSymbolTable();
     void ResolveNames();
-    ASTNode &GetNodeByPath(const vector<int> &path);
-    void ComputeLoweredTypes();
-    void LowerToMLIR(MLIRContext &ctx);
 
     void ParseFuncDecl(ASTNode &parent);
     void ParseVarDecl(ASTNode &parent);
     void ParseBlock(ASTNode &parent);
-    void ParseBinaryOp(ASTNode &parent);
-    void ParseExpression(ASTNode &parent);
+    void ParseExpr(ASTNode &parent);
+    void ParseTerm(ASTNode &parent);
     void ParseForLoop(ASTNode &parent);
     void ParseParams(ASTNode &parent);
     void ParseCallExpr(ASTNode &parent);
+    void ParseAssignment(ASTNode &parent);
     void InferTypes();
-    void PushDiag(uint32_t line, uint32_t column, const string &msg, bool isError=true);
-    void PrintDiags();
-    bool HasErrors();
+    void LowerSSA();
 };

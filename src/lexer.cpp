@@ -4,27 +4,20 @@ using namespace std;
 
 map<string, TokenType> tokenMap =
 {
-	{"fn",      TOKEN_KW_FN},
-	{"let",     TOKEN_KW_LET},
-	{"const",   TOKEN_KW_CONST},
-	{"type",    TOKEN_KW_TYPE},
-	{"if",      TOKEN_KW_IF},
-	{"else",    TOKEN_KW_ELSE},
-	{"for",     TOKEN_KW_FOR},
-	{"while",   TOKEN_KW_WHILE},
-	{"return",  TOKEN_KW_RETURN},
-	{"import",  TOKEN_KW_IMPORT},
-	{"export",  TOKEN_KW_EXPORT},
-	{"extern",  TOKEN_KW_EXTERN},
-	{"mv",      TOKEN_KW_MV},
-	{"cgavec",  TOKEN_KW_CGAVEC},
-	{"grade",   TOKEN_KW_GRADE},
-	{"struct",  TOKEN_KW_STRUCT},
-	{"match",   TOKEN_KW_MATCH},
-	{"using",   TOKEN_KW_USING},
-	{"inline",  TOKEN_KW_INLINE},
-	{"break",   TOKEN_KW_BREAK},
-	{"continue",TOKEN_KW_CONTINUE},
+	{ "fn",      TOKEN_KW_FN },
+	{ "type",    TOKEN_KW_TYPE },
+	{ "if",      TOKEN_KW_IF },
+	{ "else",    TOKEN_KW_ELSE },
+	{ "for",     TOKEN_KW_FOR },
+	{ "while",   TOKEN_KW_WHILE },
+	{ "return",  TOKEN_KW_RETURN },
+	{ "extern",  TOKEN_KW_EXTERN },
+	{ "cgavec",  TOKEN_KW_CGAVEC },
+	{ "break",   TOKEN_KW_BREAK },
+	{ "continue",TOKEN_KW_CONTINUE },
+    { "int",     TOKEN_KW_INT },
+    { "float",   TOKEN_KW_FLOAT },
+    { "cgavec",  TOKEN_KW_CGAVEC }
 };
 
 /**
@@ -35,6 +28,7 @@ map<string, TokenType> tokenMap =
  * @param file      Input source file.
  * @param tokens    List of tokens to populate.
  */
+
 void GetTokens(const string &file, vector<Token> &tokens)
 {
     FILE *f;
@@ -388,18 +382,6 @@ void GetTokens(const string &file, vector<Token> &tokens)
             string two;
             two.assign(buffer + i, 2);
 
-            if (two == "->")
-            {
-                tok.type = TOKEN_ARROW;
-                tok.text = two;
-                tok.line = (uint32_t)line;
-                tok.column = (uint32_t)column;
-                tokens.push_back(tok);
-                i = i + 2;
-                column = column + 2;
-                continue;
-            }
-
             if (two == "==")
             {
                 tok.type = TOKEN_OP_EQ;
@@ -568,10 +550,6 @@ void GetTokens(const string &file, vector<Token> &tokens)
         {
             tok.type = TOKEN_OP_SLASH;
         }
-        else if (one == "%")
-        {
-            tok.type = TOKEN_OP_PERCENT;
-        }
         else if (one == "=")
         {
             tok.type = TOKEN_OP_ASSIGN;
@@ -624,14 +602,6 @@ void GetTokens(const string &file, vector<Token> &tokens)
         {
             tok.type = TOKEN_DOT;
         }
-        else if (one == "@")
-        {
-            tok.type = TOKEN_AT;
-        }
-        else if (one == "#")
-        {
-            tok.type = TOKEN_HASH;
-        }
         else
         {
             tok.type = TOKEN_UNKNOWN;
@@ -652,5 +622,4 @@ void GetTokens(const string &file, vector<Token> &tokens)
     eofTok.column   = (uint32_t)column;
     
     tokens.push_back(eofTok);
-
 }
