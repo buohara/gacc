@@ -43,7 +43,10 @@ enum SymbolKind
 
 struct Symbol 
 {
-
+    string name;
+    SymbolKind kind;
+    Type type;
+    uint32_t scopeLevel;
 };
 
 struct ASTNode
@@ -101,7 +104,7 @@ struct ASTNode
 struct GAParser
 {
     vector<Token> tokens;
-    vector<Symbol> symbolTable;
+    map<string, Symbol> symbolTable;
 
     size_t current;
     ASTNode root;
@@ -114,7 +117,6 @@ struct GAParser
 
     void GenerateAST();
     void BuildSymbolTable();
-    void ResolveNames();
 
     void ParseFuncDecl(ASTNode &parent);
     void ParseVarDecl(ASTNode &parent);
@@ -125,6 +127,6 @@ struct GAParser
     void ParseParams(ASTNode &parent);
     void ParseCallExpr(ASTNode &parent);
     void ParseAssignment(ASTNode &parent);
-    void InferTypes();
-    void LowerSSA();
+
+    void EmitASM(string &filename);
 };

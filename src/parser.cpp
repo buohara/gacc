@@ -3,17 +3,41 @@
 #include <unordered_map>
 #include <sstream>
 
-/**
- * GAParser::LowerSSA - Emit a simple textual SSA-like IR to stdout.
- * This is a minimal lowering used when MLIR is not available. It prints
- * function signatures, allocs for arrays and cgavec, simple for-loops,
- * calls and assignments in a readable SSA-like form.
- */
-
-void GAParser::LowerSSA()
+map<NodeType, string> nodeTypeMap = 
 {
-    
-}
+    { NODE_PROG,        "Program" },
+    { NODE_FUNC_DECL,   "FunctionDecl" },
+    { NODE_VAR_DECL,    "VarDecl" },
+    { NODE_BLOCK,       "Block" },
+    { NODE_EXPR,        "Expr" },
+    { NODE_ASSIGN,      "Assign" },
+    { NODE_IF,          "If" },
+    { NODE_FOR,         "For" },
+    { NODE_RET,         "Return" },
+    { NODE_LIT,         "Literal" },
+    { NODE_UNOP,        "UnaryOp" },
+    { NODE_BINOP,       "BinaryOp" },
+    { NODE_CALL,        "Call" },
+    { NODE_IDX,         "Index" },
+    { NODE_IDENT,       "Identifier" }
+};
+
+map<Type, string> typeMap = 
+{
+    { TYPE_INT,     "int" },
+    { TYPE_FLOAT,   "float" },
+    { TYPE_CGAVEC,  "cgavec" },
+    { TYPE_VOID,    "void" },
+    { TYPE_UNKNOWN, "unknown" }
+};
+
+map<SymbolKind, string> symbolKindMap = 
+{
+    { SYM_VAR,      "var" },
+    { SYM_PARAM,    "param" },
+    { SYM_FUNC,     "func" },
+    { SYM_GLOBAL,   "global" }
+};
 
 /**
  * GAParser::PrintTokens - Print all tokens in the parser.
@@ -21,20 +45,14 @@ void GAParser::LowerSSA()
 
 void GAParser::PrintTokens() 
 {
+    printf("\n==============\n");
+    printf("Tokens:\n");
+    printf("==============\n");
+    
     for (const Token &tok : tokens)
         printf("Token: Type=%d, Text='%s', Line=%u, Column=%u\n",
             tok.type, tok.text.c_str(), tok.line, tok.column);
 }
-
-/**
- * GAParser::ResolveNames - Resolve names in the AST and link to symbol table.
- */
-
-void GAParser::ResolveNames()
-{
-    
-}
-
 
 /**
  * GAParser::PrintAST - Print an AST.
@@ -42,7 +60,26 @@ void GAParser::ResolveNames()
 
 void GAParser::PrintAST() 
 {
-    
+    printf("\n==============\n");
+    printf("AST:\n");
+    printf("==============\n");
+
+    vector<pair<ASTNode, uint32_t>> stack;
+    stack.push_back({root, 0});
+
+    while (!stack.empty())
+    {
+        ASTNode cur     = stack.back().first;
+        uint32_t depth  = stack.back().second;
+
+        stack.pop_back();
+
+        printf("%*sNode: type=%s, txt='%s', l=%u, c=%u\n", 
+            depth * 2, "", nodeTypeMap[cur.nodeType].c_str(), cur.text.c_str(), cur.l, cur.c);
+
+        for (uint32_t i = cur.children.size(); i-- > 0;)
+            stack.push_back({ cur.children[i], depth + 1 });
+    }
 }
 
 /**
@@ -51,7 +88,17 @@ void GAParser::PrintAST()
 
 void GAParser::PrintSymbolTable()
 {
-    
+    printf("\n==============\n");
+    printf("Symbols:\n");
+    printf("==============\n");
+
+    for (const auto &entry : symbolTable)
+    {
+        const Symbol &sym = entry.second;
+
+        printf("Symbol: Name='%s', Kind=%s, Type=%s, ScopeLevel=%u\n",
+            sym.name.c_str(), symbolKindMap[sym.kind].c_str(), typeMap[sym.type].c_str(), sym.scopeLevel);
+    }
 }
 
 /**
@@ -306,6 +353,8 @@ void GAParser::ParseExpr(ASTNode &parent)
             binop.text = tokens[current].text;
             current++;
             ParseExpr(binop);
+            parent.children.push_back(binop);
+            return;
         }
     }
     else
@@ -393,7 +442,31 @@ void GAParser::ParseCallExpr(ASTNode &parent)
 
 void GAParser::BuildSymbolTable()
 {
-   
+    vector<pair<ASTNode, uint32_t>> stack;
+
+    stack.push_back({root, 0});
+
+    while (!stack.empty())
+    {
+        ASTNode cur     = stack.back().first;
+        uint32_t depth  = stack.back().second;
+
+        stack.pop_back();
+
+        for (uint32_t i = cur.children.size(); i-- > 0;)
+            stack.push_back({ cur.children[i], depth + 1 });
+
+        if (cur.nodeType == NODE_VAR_DECL)
+        {
+            Symbol sym;
+            sym.name        = cur.text;
+            sym.kind        = SYM_VAR;
+            sym.type        = cur.type;
+            sym.scopeLevel  = depth;
+
+            symbolTable[sym.name] = sym;
+        }
+    }
 }
 
 
@@ -419,13 +492,106 @@ static Type PromoteNumeric(Type a, Type b)
     return TYPE_UNKNOWN;
 }
 
-
 /**
- * GAParser::InferTypes - Traverse the AST in post-order and infer
- * types for symbols used in exprssions.
+ * GAParser::EmitASM - Emit assembly code from the AST.
+ * 
+ * @param filename  [in]    Output filename.
  */
 
-void GAParser::InferTypes()
+void GAParser::EmitASM(string &filename)
 {
-   
+    FILE *pFile = fopen(filename.c_str(), "w");
+    
+    if (!pFile)
+    {
+        printf("Error: Unable to open output file '%s' for writing\n", filename.c_str());
+        return;
+    }
+
+    fprintf(pFile, "section .data\n");
+    fprintf(pFile, "fmt: db \"%%d\", 10, 0\n");
+
+    for (const auto &entry : symbolTable)
+    {
+        const Symbol &sym = entry.second;
+
+        if (sym.kind == SYM_VAR && sym.type == TYPE_INT)
+        {
+            fprintf(pFile, "%s: dq 0\n", sym.name.c_str());
+        }
+    }
+
+    fprintf(pFile, "section .text\n");
+    fprintf(pFile, "global main\n");
+    fprintf(pFile, "extern printf\n");
+    
+    fprintf(pFile, "main:\n");
+
+    vector<pair<ASTNode, uint32_t>> stack;
+    stack.push_back({root, 0});
+
+    while (!stack.empty())
+    {
+        ASTNode cur     = stack.back().first;
+        uint32_t depth  = stack.back().second;
+
+        stack.pop_back();
+
+        for (uint32_t i = cur.children.size(); i-- > 0;)
+            stack.push_back({ cur.children[i], depth + 1 });
+
+        if (cur.nodeType == NODE_ASSIGN)
+        {
+            const ASTNode &lhs = cur.children[0];
+            const ASTNode &rhs = cur.children[1];
+
+            if (lhs.nodeType == NODE_IDENT && rhs.nodeType == NODE_LIT)
+            {
+                fprintf(pFile, "    mov qword [%s], %s\n", lhs.text.c_str(), rhs.text.c_str());
+            }
+            else if (rhs.nodeType == NODE_BINOP)
+            {
+                const ASTNode &binopLHS = rhs.children[0];
+                const ASTNode &binopRHS = rhs.children[1];
+
+                if (rhs.text == "+")
+                {
+                    fprintf(pFile, "    mov rax, [%s]\n", binopLHS.text.c_str());
+                    fprintf(pFile, "    add rax, [%s]\n", binopRHS.text.c_str());
+                    fprintf(pFile, "    mov [%s], rax\n", lhs.text.c_str());
+                }
+                else if (rhs.text == "-")
+                {
+                    fprintf(pFile, "    mov rax, %s\n", binopLHS.text.c_str());
+                    fprintf(pFile, "    sub rax, %s\n", binopRHS.text.c_str());
+                    fprintf(pFile, "    mov qword [%s], rax\n", lhs.text.c_str());
+                }
+                else if (rhs.text == "*")
+                {
+                    fprintf(pFile, "    mov rax, %s\n", binopLHS.text.c_str());
+                    fprintf(pFile, "    imul rax, %s\n", binopRHS.text.c_str());
+                    fprintf(pFile, "    mov qword [%s], rax\n", lhs.text.c_str());
+                }
+                else if (rhs.text == "/")
+                {
+                    fprintf(pFile, "    mov rax, %s\n", binopLHS.text.c_str());
+                    fprintf(pFile, "    cqo\n");
+                    fprintf(pFile, "    idiv qword %s\n", binopRHS.text.c_str());
+                    fprintf(pFile, "    mov qword [%s], rax\n", lhs.text.c_str());
+                }
+            }
+                
+        }
+    }
+
+    fprintf(pFile, "    sub rsp, 8\n");
+    fprintf(pFile, "    mov rdi, fmt\n");
+    fprintf(pFile, "    mov rsi, [c]\n");
+    fprintf(pFile, "    xor rax, rax\n");
+    fprintf(pFile, "    call printf\n");
+    fprintf(pFile, "    add rsp, 8\n");
+    fprintf(pFile, "    mov eax, 0\n");
+    fprintf(pFile, "    ret\n");
+
+    fclose(pFile);
 }

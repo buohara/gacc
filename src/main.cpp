@@ -14,7 +14,6 @@ struct CLArgs
     CLArgs() : printTokens(false), printAST(false), dumpSymTab(false), dumpSSA(false) {}
 };
 
-
 /**
  * ParseCommandLine - Parse command line arguments.
  * 
@@ -65,14 +64,18 @@ void ParseCommandLine(vector<string> &args, CLArgs &clArgs)
             continue;
         }
 
-        if (args[i] == "-ssa")
-        {
-            clArgs.dumpSSA = true;
-            continue;
-        }
-
         clArgs.inputFilename = args[i];
     }
+}
+
+/**
+ * AssembleAndLink - Assemble and link the generated assembly code.
+ */
+
+void AssembleAndLink()
+{
+    int ret = system("nasm -f elf64 testout.s -o testout.o");
+    ret     = system("gcc testout.o -no-pie -o out");
 }
 
 /**
@@ -94,8 +97,20 @@ int main(int argc, char **argv)
     GAParser parser;
     GetTokens(clArgs.inputFilename, parser.tokens);
     parser.GenerateAST();
+    parser.BuildSymbolTable();
 
-    
+    if (clArgs.printTokens)
+        parser.PrintTokens();
+
+    if (clArgs.printAST)
+        parser.PrintAST();
+
+    if (clArgs.dumpSymTab)
+        parser.PrintSymbolTable();
+
+    string outFile = "testout.s";
+    parser.EmitASM(outFile);
+    AssembleAndLink();
 
     return 0;
 }
